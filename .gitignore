@@ -70,6 +70,10 @@ web_modules/
 .env.*
 !.env.example
 
+# secret helper files (paste-into-Vercel copies of keys) — never commit
+*.secret.local
+
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

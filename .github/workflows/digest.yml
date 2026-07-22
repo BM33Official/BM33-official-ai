@@ -1,0 +1,30 @@
+# เรียก /api/learn ให้บอท "เรียนรู้" จากแชต 3 รอบ/วัน (เวลาไทย)
+# GitHub Actions cron ใช้ UTC เสมอ -> แปลงจาก Asia/Bangkok (UTC+7):
+#   13:30 ICT = 06:30 UTC
+#   20:00 ICT = 13:00 UTC
+#   03:00 ICT = 20:00 UTC (ของวันก่อนหน้า)
+#
+# ต้องตั้ง 2 ค่าใน GitHub repo -> Settings -> Secrets and variables -> Actions:
+#   LEARN_URL          = https://<your-vercel-app>/api/learn   (Variable ก็ได้)
+#   LEARN_CRON_SECRET  = ค่าเดียวกับที่ตั้งใน Vercel (Secret)
+
+name: bm33-learn-digest
+
+on:
+  schedule:
+    - cron: "30 6 * * *"   # 13:30 ICT
+    - cron: "0 13 * * *"   # 20:00 ICT
+    - cron: "0 20 * * *"   # 03:00 ICT (วันถัดไปตามเวลาไทย)
+  workflow_dispatch: {}      # กดรันเองได้จากหน้า Actions
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger digest
+        run: |
+          code=$(curl -sS -o /tmp/out.txt -w "%{http_code}" \
+            -H "x-learn-secret: ${{ secrets.LEARN_CRON_SECRET }}" \
+            "${{ secrets.LEARN_URL || vars.LEARN_URL }}")
+          echo "HTTP $code"; cat /tmp/out.txt
+          test "$code" = "200"
