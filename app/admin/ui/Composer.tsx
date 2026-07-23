@@ -4,16 +4,26 @@ import { act } from "./api";
 
 type FormOpt = { form_id: string; name: string };
 
-export default function Composer({ forms }: { forms: FormOpt[] }) {
+type Initial = Partial<{
+  id: string; title: string; body_text: string; message_type: "text" | "flex";
+  header_color: string; button_label: string; button_action: "" | "uri" | "postback";
+  button_value: string; segment_form_id: string; segment_condition: string; test_mode: string;
+}>;
+
+export default function Composer({ forms, initial }: { forms: FormOpt[]; initial?: Initial }) {
+  const [editId] = useState(initial?.id ?? "");
   const [f, setF] = useState({
-    title: "", body_text: "", message_type: "flex" as "text" | "flex",
-    header_color: "#06C755", button_label: "", button_action: "" as "" | "uri" | "postback",
-    button_value: "", segment_form_id: "", segment_condition: "undone",
+    title: initial?.title ?? "", body_text: initial?.body_text ?? "",
+    message_type: (initial?.message_type ?? "flex") as "text" | "flex",
+    header_color: initial?.header_color ?? "#06C755", button_label: initial?.button_label ?? "",
+    button_action: (initial?.button_action ?? "") as "" | "uri" | "postback",
+    button_value: initial?.button_value ?? "", segment_form_id: initial?.segment_form_id ?? "",
+    segment_condition: initial?.segment_condition ?? "undone",
   });
   const [mode, setMode] = useState<"now" | "schedule" | "recurring">("now");
   const [scheduleAt, setScheduleAt] = useState("");
   const [rec, setRec] = useState({ cadenceDays: 3, cap: 3 });
-  const [testMode, setTestMode] = useState(true);
+  const [testMode, setTestMode] = useState(initial ? initial.test_mode === "1" : true);
   const [est, setEst] = useState<{ count: number; remaining: number | null } | null>(null);
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,10 +39,12 @@ export default function Composer({ forms }: { forms: FormOpt[] }) {
 
   async function saveDraft() {
     setBusy(true); setMsg(null);
-    const r = await act("broadcast.create", { data: payload() });
+    const r = editId
+      ? await act("broadcast.update", { id: editId, patch: payload() })
+      : await act("broadcast.create", { data: payload() });
     setBusy(false);
     setMsg(r.ok ? { t: "บันทึกร่างแล้ว", ok: true } : { t: String(r.error), ok: false });
-    if (r.ok) setTimeout(() => window.location.reload(), 700);
+    if (r.ok) setTimeout(() => (window.location.href = "/admin/broadcasts"), 700);
   }
 
   function payload() {
@@ -47,9 +59,16 @@ export default function Composer({ forms }: { forms: FormOpt[] }) {
   async function approveSend() {
     if (!f.body_text && !f.title) { setMsg({ t: "ใส่ข้อความก่อนนะ", ok: false }); return; }
     setBusy(true); setMsg(null);
-    const c = await act("broadcast.create", { data: payload() });
-    if (!c.ok) { setBusy(false); setMsg({ t: String(c.error), ok: false }); return; }
-    const r = await act("broadcast.approveSend", { id: c.id });
+    let id = editId;
+    if (id) {
+      const u = await act("broadcast.update", { id, patch: payload() });
+      if (!u.ok) { setBusy(false); setMsg({ t: String(u.error), ok: false }); return; }
+    } else {
+      const c = await act("broadcast.create", { data: payload() });
+      if (!c.ok) { setBusy(false); setMsg({ t: String(c.error), ok: false }); return; }
+      id = String(c.id);
+    }
+    const r = await act("broadcast.approveSend", { id });
     setBusy(false);
     if (r.scheduled) setMsg({ t: "ตั้งเวลา/ตั้งเตือนซ้ำเรียบร้อย รอระบบส่งตามเวลา", ok: true });
     else if (r.ok) setMsg({ t: `ส่งแล้ว ${r.count} คน${r.testMode ? " (โหมดทดสอบ — ส่งหาแอดมินเท่านั้น)" : ""}`, ok: true });
@@ -62,7 +81,7 @@ export default function Composer({ forms }: { forms: FormOpt[] }) {
     <div className="grid g2">
       {/* ── ฟอร์มเขียน ── */}
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>เขียนบรอดแคสต์</h2>
+        <h2 style={{ marginTop: 0 }}>{editId ? "✏️ แก้ไขร่าง" : "เขียนบรอดแคสต์"} {editId && <a href="/admin/broadcasts" style={{ fontSize: 13 }}>+ ร่างใหม่</a>}</h2>
 
         <div className="field"><label>ส่งถึงใคร</label>
           <div className="row">

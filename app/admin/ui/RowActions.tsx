@@ -23,6 +23,9 @@ export default function RowActions({ id, status }: { id: string; status: string 
   return (
     <div className="row" style={{ gap: 6 }}>
       {["draft", "pending"].includes(status) && (
+        <a className="btn btn-sm" href={`/admin/broadcasts?edit=${id}`}>แก้ไข</a>
+      )}
+      {["draft", "pending"].includes(status) && (
         <button className="btn-primary btn-sm" onClick={approve} disabled={busy}>อนุมัติ & ส่ง</button>
       )}
       {["draft", "pending", "scheduled", "approved"].includes(status) && (

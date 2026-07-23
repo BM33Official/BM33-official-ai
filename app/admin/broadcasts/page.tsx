@@ -4,6 +4,7 @@ import { readForms } from "@/lib/bc/forms";
 import { readBroadcasts } from "@/lib/bc/broadcast";
 import Composer from "../ui/Composer";
 import RowActions from "../ui/RowActions";
+import { bkkDateTime } from "@/lib/bc/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,19 +18,20 @@ const STATUS_TH: Record<string, string> = {
   scheduled: "ตั้งเวลา", sent: "ส่งแล้ว", canceled: "ยกเลิก",
 };
 
-export default async function Broadcasts() {
+export default async function Broadcasts({ searchParams }: { searchParams: { edit?: string } }) {
   requireAuth();
   await ensureBcTabs();
   const [forms, broadcasts] = await Promise.all([readForms(), readBroadcasts()]);
   const formOpts = forms.map((f) => ({ form_id: f.form_id, name: f.name }));
   const queue = [...broadcasts].reverse();
+  const editing = searchParams?.edit ? broadcasts.find((b) => b.id === searchParams.edit) : undefined;
 
   return (
     <div className="wrap">
       <h1>บรอดแคสต์</h1>
       <p className="sub">เขียน → พรีวิว → อนุมัติ → ส่ง (เริ่มด้วยโหมดทดสอบก่อนเสมอ)</p>
 
-      <Composer forms={formOpts} />
+      <Composer forms={formOpts} initial={editing} />
 
       <h2>คิว & ประวัติ</h2>
       <div className="card tablecard">
@@ -46,7 +48,7 @@ export default async function Broadcasts() {
                     <td><b>{b.title || b.body_text.slice(0, 30) || "(ว่าง)"}</b>{b.test_mode === "1" && <span className="badge b-muted" style={{ marginLeft: 6 }}>ทดสอบ</span>}</td>
                     <td className="hint">{b.segment_form_id ? forms.find((f) => f.form_id === b.segment_form_id)?.name || "ฟอร์ม" : "ทุกคน"} · {b.segment_condition}</td>
                     <td><span className={`badge ${STATUS_BADGE[b.status] || "b-muted"}`}>{STATUS_TH[b.status] || b.status}</span></td>
-                    <td className="hint">{b.schedule_at ? b.schedule_at.slice(0, 16).replace("T", " ") : b.sent_at ? b.sent_at.slice(0, 16).replace("T", " ") : "-"}</td>
+                    <td className="hint">{b.schedule_at ? bkkDateTime(b.schedule_at) : b.sent_at ? bkkDateTime(b.sent_at) : "-"}</td>
                     <td className="hint">{res ? `${res.count} คน${res.testMode ? " (ทดสอบ)" : ""}` : "-"}</td>
                     <td><RowActions id={b.id} status={b.status} /></td>
                   </tr>

@@ -5,6 +5,7 @@ import { readForms } from "@/lib/bc/forms";
 import { readOverlay } from "@/lib/bc/status";
 import { readRoster } from "@/lib/bc/roster";
 import ConfirmButtons from "../ui/ConfirmButtons";
+import { bkkDateTime } from "@/lib/bc/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ export default async function Inbox() {
                   <td>{c.student_id}</td>
                   <td>{formById.get(c.form_id) || c.form_id}</td>
                   <td className="hint">{c.note}</td>
-                  <td className="hint">{c.updated_at?.slice(0, 16).replace("T", " ")}</td>
+                  <td className="hint">{bkkDateTime(c.updated_at)}</td>
                   <td><ConfirmButtons studentId={c.student_id} formId={c.form_id} /></td>
                 </tr>
               ))}

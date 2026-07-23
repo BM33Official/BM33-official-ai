@@ -1,0 +1,32 @@
+# สรุป/เตือน: เช็คเดดไลน์ใกล้ถึงทุกวัน + สร้างสรุปสัปดาห์ทุกวันอาทิตย์
+# ใช้ secret เดียวกับ broadcast (BROADCAST_URL ฐาน + BROADCAST_CRON_SECRET)
+# เวลา UTC: 01:00 UTC = 08:00 น. ไทย
+name: bm33-summary-cron
+
+on:
+  schedule:
+    - cron: "0 1 * * *"    # ทุกวัน 08:00 ICT — เช็คเดดไลน์ใกล้ถึง
+    - cron: "0 2 * * 0"    # อาทิตย์ 09:00 ICT — สรุปสัปดาห์
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "due หรือ weekly"
+        default: "weekly"
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger summary cron
+        run: |
+          MODE="due"
+          # cron ที่สอง(วันอาทิตย์) = weekly; workflow_dispatch ใช้ input
+          if [ "${{ github.event.schedule }}" = "0 2 * * 0" ]; then MODE="weekly"; fi
+          if [ -n "${{ github.event.inputs.mode }}" ]; then MODE="${{ github.event.inputs.mode }}"; fi
+          BASE="${{ secrets.BROADCAST_URL }}"
+          # แปลง .../api/broadcast-cron -> .../api/summary-cron
+          URL="${BASE/broadcast-cron/summary-cron}?mode=$MODE"
+          echo "calling $URL"
+          code=$(curl -sS -o /tmp/out.txt -w "%{http_code}" -H "x-cron-secret: ${{ secrets.BROADCAST_CRON_SECRET }}" "$URL")
+          echo "HTTP $code"; cat /tmp/out.txt
+          test "$code" = "200"

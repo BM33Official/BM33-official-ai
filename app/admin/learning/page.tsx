@@ -1,5 +1,7 @@
 import { requireAuth } from "@/lib/bc/auth";
 import { readTable } from "@/lib/google-sheets";
+import { bkkDateTime } from "@/lib/bc/format";
+import ExpandText from "../ui/ExpandText";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +23,7 @@ export default async function Learning() {
   return (
     <div className="wrap">
       <h1>การเรียนรู้จากกลุ่ม</h1>
-      <p className="sub">บอทอ่านแชต/รูปในกลุ่มวันละ 3 รอบ (13:30 / 20:00 / 03:00) แล้วสรุปเป็นความรู้ — อ่านเฉพาะข้อความใหม่ตั้งแต่รอบก่อนหน้า</p>
+      <p className="sub">บอทอ่านแชต/รูปในกลุ่มทุก 2 ชั่วโมง แล้วสรุปเป็นความรู้เก็บใน 01_ฐานความรู้_AI (บอทตอบคำถามได้) — อ่านเฉพาะข้อความใหม่ตั้งแต่รอบก่อนหน้า</p>
 
       <div className="grid g4">
         <div className="card"><div className="label">ข้อความในบัฟเฟอร์</div><div className="stat">{buffer.length}</div></div>
@@ -61,10 +63,10 @@ export default async function Learning() {
                 const st = String(r["สถานะเรียนรู้"] ?? "new");
                 return (
                   <tr key={i}>
-                    <td className="hint">{String(r["เวลา(ISO)"] ?? "").slice(0, 16).replace("T", " ")}</td>
+                    <td className="hint">{bkkDateTime(String(r["เวลา(ISO)"] ?? ""))}</td>
                     <td>{String(r["ชื่อแสดงผล"] ?? "") || "-"}</td>
                     <td>{type === "image" ? "🖼 รูป" : "💬 ข้อความ"}</td>
-                    <td className="hint">{String(r["เนื้อหา/คำบรรยายรูป"] ?? "").slice(0, 100)}</td>
+                    <td><ExpandText text={String(r["เนื้อหา/คำบรรยายรูป"] ?? "")} /></td>
                     <td>{st === "processed" ? <span className="badge b-ok">สรุปแล้ว</span> : <span className="badge b-warn">ใหม่</span>}</td>
                   </tr>
                 );

@@ -2,6 +2,7 @@ import { requireAuth } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
+import { bkkDate } from "@/lib/bc/format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,7 +37,7 @@ export default async function Members() {
                   <td>{m.matched_student_id || (m.last3 ? `…${m.last3}` : "-")}</td>
                   <td>{nameById.get(String(m.matched_student_id).replace(/\D/g, "")) || "-"}</td>
                   <td>{statusBadge(m.status)}</td>
-                  <td>{m.onboarded_at ? m.onboarded_at.slice(0, 10) : "-"}</td>
+                  <td>{m.onboarded_at ? bkkDate(m.onboarded_at) : "-"}</td>
                 </tr>
               ))}
             </tbody>

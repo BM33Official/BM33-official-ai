@@ -147,22 +147,29 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   if (!isGroup && replyToken && userId) {
     const handled = await maybeHandleOnboarding(replyToken, userId, rawText);
     if (handled) return;
+    // งานค้างรายคน ("มีอะไรต้องทำ", "งานค้าง")
+    const tasks = await maybeHandlePersonalTasks(replyToken, userId, rawText);
+    if (tasks) return;
   }
 
   // log groupId (ไม่ใช่ข้อมูลส่วนตัว) — เอาไปใส่ LEARN_GROUP_IDS ได้
   if (isGroup) log.info("group_message", { groupId: groupId ?? "-" });
 
-  // ── บันทึกข้อความกลุ่มลง buffer (สำหรับ digest) ─────────────────────────
+  // ── บันทึกข้อความกลุ่มลง buffer (สำหรับ digest) + ดึงชื่อผู้ส่ง ──────────
   if (isGroup && shouldLearn(groupId)) {
-    logMessage({
-      messageId: message.id,
-      tsISO: new Date(event.timestamp || Date.now()).toISOString(),
-      groupId: groupId!,
-      userId: userId ?? "",
-      displayName: "",
-      type: "text",
-      content: rawText,
-    }).catch((err) => log.warn("log_message_failed", { message: String(err) }));
+    groupDisplayName(groupId!, userId)
+      .then((name) =>
+        logMessage({
+          messageId: message.id,
+          tsISO: new Date(event.timestamp || Date.now()).toISOString(),
+          groupId: groupId!,
+          userId: userId ?? "",
+          displayName: name,
+          type: "text",
+          content: rawText,
+        })
+      )
+      .catch((err) => log.warn("log_message_failed", { message: String(err) }));
   }
 
   // ── ในกลุ่ม: ตอบเฉพาะเมื่อถูก mention หรือขึ้นต้น /ถาม ─────────────────
@@ -180,11 +187,28 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   await answerQuestion(replyToken, question, userId);
 }
 
-// ดึงชื่อแสดงผลจาก LINE (สำหรับ onboarding)
+// ดึงชื่อแสดงผลจาก LINE (สำหรับ onboarding — แชท 1:1)
 async function displayName(userId: string): Promise<string> {
   try {
     const p = await lineClient.getProfile(userId);
     return p.displayName ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// ดึงชื่อผู้ส่งในกลุ่ม (cache กัน API call ซ้ำ)
+const _profileCache = new Map<string, string>();
+async function groupDisplayName(groupId: string, userId: string | undefined): Promise<string> {
+  if (!userId) return "";
+  const key = `${groupId}/${userId}`;
+  const cached = _profileCache.get(key);
+  if (cached !== undefined) return cached;
+  try {
+    const p = await lineClient.getGroupMemberProfile(groupId, userId);
+    const name = p.displayName ?? "";
+    _profileCache.set(key, name);
+    return name;
   } catch {
     return "";
   }
@@ -247,6 +271,18 @@ async function maybeHandleOnboarding(
 
   // awaiting_info หรือ mismatch -> ตีความเป็นข้อมูลลงทะเบียน
   await safeReply(replyToken, await handleOnboardingText(member, rawText));
+  return true;
+}
+
+// งานค้างรายคน — ตอบเมื่อสมาชิกที่ยืนยันแล้วถามถึงงานของตัวเอง
+async function maybeHandlePersonalTasks(replyToken: string, userId: string, rawText: string): Promise<boolean> {
+  const t = rawText.trim();
+  if (!/(งานของฉัน|งานของเรา|ยังไม่ได้ทำ|งานค้าง|ค้างอะไร|ต้องทำอะไร|เช็คงาน|มีอะไรต้องทำ|ค้างอยู่|to-?do)/i.test(t)) return false;
+  let member;
+  try { member = await getMember(userId); } catch { return false; }
+  if (!member || member.status !== "verified") return false;
+  const { personalUndone } = await import("@/lib/bc/summary");
+  await safeReply(replyToken, [textMessage(await personalUndone(member))]);
   return true;
 }
 

@@ -8,6 +8,8 @@ import {
   createBroadcast, patchBroadcast, getBroadcast, sendBroadcast, estimateRecipients,
 } from "@/lib/bc/broadcast";
 import { messageQuota } from "@/lib/line";
+import { addExam, setNotMemorized, academicBroadcast, AcademicMode } from "@/lib/bc/academic";
+import { generateWeeklySummary, getSummary, sendSummaryToAll, updateSummary } from "@/lib/bc/summary";
 import { Broadcast } from "@/lib/bc/types";
 
 export const runtime = "nodejs";
@@ -76,6 +78,39 @@ export async function POST(req: Request) {
           String(body.student_id), String(body.form_id),
           body.state as "confirmed" | "none", "manual", String(body.note ?? "")
         );
+        return NextResponse.json({ ok: true });
+      }
+
+      case "academic.addExam": {
+        const id = await addExam(String(body.name ?? ""), String(body.exam_date ?? ""), String(body.question_count ?? ""));
+        return NextResponse.json({ ok: true, exam_id: id });
+      }
+      case "academic.setMarks": {
+        await setNotMemorized(String(body.examId), (body.ids as string[]) ?? []);
+        return NextResponse.json({ ok: true });
+      }
+      case "academic.broadcast": {
+        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds());
+        return NextResponse.json({ ...r });
+      }
+
+      case "summary.generate": {
+        const s = await generateWeeklySummary();
+        return NextResponse.json({ ok: true, id: s.id });
+      }
+      case "summary.update": {
+        const s = await getSummary(String(body.id));
+        if (!s) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+        await updateSummary(s, body.patch as Record<string, string>);
+        return NextResponse.json({ ok: true });
+      }
+      case "summary.sendAll": {
+        const r = await sendSummaryToAll(String(body.id), body.testMode !== false, adminLineIds());
+        return NextResponse.json({ ...r });
+      }
+      case "summary.delete": {
+        const s = await getSummary(String(body.id));
+        if (s) await updateSummary(s, { status: "dismissed" });
         return NextResponse.json({ ok: true });
       }
 

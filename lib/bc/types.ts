@@ -8,6 +8,8 @@ export const TABS = {
   status: "BC_status",
   broadcasts: "BC_broadcasts",
   sendLog: "BC_send_log",
+  exams: "BC_exams",
+  summaries: "BC_summaries",
 } as const;
 
 // header (ลำดับคอลัมน์สำคัญ — โค้ดอ้างด้วยชื่อ ไม่ใช่ตำแหน่ง แต่ ensureTab ใช้ลำดับนี้)
@@ -30,7 +32,19 @@ export const HEADERS: Record<keyof typeof TABS, string[]> = {
     "created_by", "approved_by", "created_at", "sent_at", "result_json",
   ],
   sendLog: ["broadcast_id", "student_id", "line_user_id", "round", "sent_at"],
+  exams: ["exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at"],
+  summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at"],
 };
+
+export interface Exam {
+  __row?: number;
+  exam_id: string;
+  name: string;
+  exam_date: string;
+  question_count: string;
+  not_memorized_ids: string; // comma-separated student_id ที่ยังไม่ท่อง
+  created_at: string;
+}
 
 export type OnboardingState = "awaiting_info" | "awaiting_confirm" | "done" | "mismatch";
 export type MemberStatus = "verified" | "unverified" | "mismatch";

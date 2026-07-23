@@ -12,6 +12,9 @@
     },
     "app/api/broadcast-cron/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/summary-cron/route.ts": {
+      "maxDuration": 60
     }
   }
 }

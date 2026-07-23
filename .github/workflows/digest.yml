@@ -9,7 +9,7 @@ name: bm33-learn-digest
 
 on:
   schedule:
-    - cron: "0 * * * *"   # ทุกต้นชั่วโมง (UTC — GitHub cron อาจดีเลย์ 5-15 นาที)
+    - cron: "0 */2 * * *"   # ทุก 2 ชั่วโมง (UTC — GitHub cron อาจดีเลย์ 5-15 นาที)
   workflow_dispatch: {}      # กดรันเองได้จากหน้า Actions
 
 jobs:
