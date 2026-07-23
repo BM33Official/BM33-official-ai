@@ -15,6 +15,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <Link href="/admin/members">สมาชิก</Link>
         <Link href="/admin/forms">ฟอร์ม</Link>
         <Link href="/admin/inbox">กล่องรอตรวจ</Link>
+        <Link href="/admin/learning">การเรียนรู้</Link>
         <span className="spacer" />
         <Logout />
       </nav>

@@ -221,8 +221,13 @@ async function maybeHandleOnboarding(
     return false; // BC ยังไม่พร้อม -> ปล่อยให้ Q&A ทำงาน
   }
 
-  // ยังไม่เคยลงทะเบียน — เริ่มให้เมื่อพิมพ์คำสั่งลงทะเบียนเท่านั้น (ไม่แย่งถามตอบ)
-  if (!member || member.onboarding_state === "" || member.onboarding_state === "done") {
+  // ยังไม่เคยลงทะเบียน (รวมคนที่แอดไว้ก่อนแล้ว) — เริ่มลงทะเบียนอัตโนมัติเมื่อทักครั้งแรก
+  if (!member || member.onboarding_state === "") {
+    await safeReply(replyToken, await handleFollow(userId, await displayName(userId)));
+    return true;
+  }
+  // ลงทะเบียนเสร็จแล้ว — เริ่มใหม่เฉพาะเมื่อพิมพ์คำสั่ง (ไม่แย่งถามตอบ)
+  if (member.onboarding_state === "done") {
     if (registerCmd) {
       await safeReply(replyToken, await handleFollow(userId, await displayName(userId)));
       return true;
