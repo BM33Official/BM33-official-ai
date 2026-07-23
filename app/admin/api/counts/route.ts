@@ -1,6 +1,6 @@
 // นับรายการที่ "ต้องสนใจ" ต่อแท็บ (สำหรับ badge แจ้งเตือนสีแดง)
 import { NextResponse } from "next/server";
-import { isAuthed } from "@/lib/bc/auth";
+import { isAuthed, currentRole } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readMembers } from "@/lib/bc/members";
 import { readOverlay } from "@/lib/bc/status";
@@ -12,6 +12,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   if (!isAuthed()) return NextResponse.json({ ok: false }, { status: 401 });
+  const role = currentRole();
+  // ฝ่ายวิชาการเห็นแค่แท็บวิชาการ — ไม่ต้องนับ badge อื่น (ประหยัด read)
+  if (role === "academic") return NextResponse.json({ ok: true, role });
   try {
     await ensureBcTabs();
     const [members, overlay, broadcasts, buffer, pending] = await Promise.all([
@@ -28,6 +31,7 @@ export async function GET() {
 
     return NextResponse.json({
       ok: true,
+      role,
       members: inProgress,
       inbox: claims + mismatch,
       learning: newBuffer,

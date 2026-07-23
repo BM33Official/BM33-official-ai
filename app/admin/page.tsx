@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readMembers } from "@/lib/bc/members";
 import { readForms } from "@/lib/bc/forms";
@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function Dashboard() {
-  requireAuth();
+  requireAdmin();
   await ensureBcTabs();
 
   const [members, forms, overlay, quota, broadcasts] = await Promise.all([

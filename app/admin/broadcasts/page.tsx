@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readForms } from "@/lib/bc/forms";
 import { readBroadcasts } from "@/lib/bc/broadcast";
@@ -19,7 +19,7 @@ const STATUS_TH: Record<string, string> = {
 };
 
 export default async function Broadcasts({ searchParams }: { searchParams: { edit?: string } }) {
-  requireAuth();
+  requireAdmin();
   await ensureBcTabs();
   const [forms, broadcasts] = await Promise.all([readForms(), readBroadcasts()]);
   const formOpts = forms.map((f) => ({ form_id: f.form_id, name: f.name }));

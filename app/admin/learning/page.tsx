@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { readTable } from "@/lib/google-sheets";
 import { bkkDateTime } from "@/lib/bc/format";
 import ExpandText from "../ui/ExpandText";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function Learning() {
-  requireAuth();
+  requireAdmin();
 
   // 07 = บัฟเฟอร์ข้อความจากกลุ่ม, 01 = ฐานความรู้ (AI เขียน KB-AUTO-*)
   const [buffer, kb] = await Promise.all([

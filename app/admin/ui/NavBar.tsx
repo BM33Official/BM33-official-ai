@@ -17,6 +17,7 @@ const LINKS = [
 
 export default function NavBar() {
   const [c, setC] = useState<Record<string, number>>({});
+  const [role, setRole] = useState<string>("");
   const pathname = usePathname();
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function NavBar() {
     const load = () =>
       fetch("/admin/api/counts")
         .then((r) => r.json())
-        .then((j) => { if (alive && j.ok) setC(j); })
+        .then((j) => { if (alive && j.ok) { setC(j); setRole(j.role || "admin"); } })
         .catch(() => {});
     load();
     // refresh badges gently while the panel is open
@@ -32,10 +33,13 @@ export default function NavBar() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // ฝ่ายวิชาการเห็นแค่แท็บวิชาการ
+  const links = role === "academic" ? LINKS.filter((l) => l.href === "/admin/academic") : LINKS;
+
   return (
     <nav className="bc-nav">
-      <span className="brand">BM33 · Control Center</span>
-      {LINKS.map((l) => {
+      <span className="brand">BM33 · Control Center{role === "academic" ? " · วิชาการ" : ""}</span>
+      {links.map((l) => {
         const n = l.key ? c[l.key] || 0 : 0;
         const active = pathname === l.href;
         return (

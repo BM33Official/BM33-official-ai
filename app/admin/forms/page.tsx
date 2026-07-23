@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readForms } from "@/lib/bc/forms";
 import { summarize } from "@/lib/bc/status";
@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function Forms() {
-  requireAuth();
+  requireAdmin();
   await ensureBcTabs();
   const forms = await readForms();
   const rows = await Promise.all(forms.map(async (f) => ({ f, s: await summarize(f) })));

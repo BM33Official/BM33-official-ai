@@ -31,6 +31,14 @@ export function hasPersonalization(b: Broadcast): boolean {
 export function buildMessages(b: Broadcast, m?: Member): Msg[] {
   const body = personalize(b.body_text, m);
   const title = personalize(b.title, m);
+  if (b.message_type === "image") {
+    const url = (b.image_url ?? "").trim();
+    const msgs: Msg[] = [];
+    if (url) msgs.push({ type: "image", originalContentUrl: url, previewImageUrl: url });
+    // ข้อความประกอบ (แคปชัน) ส่งเป็นข้อความต่อจากรูป ถ้ามี
+    if (body) msgs.push({ type: "text", text: body });
+    return msgs.length ? msgs : [{ type: "text", text: title || " " }];
+  }
   if (b.message_type === "flex") {
     return [broadcastFlex({
       title,
@@ -59,6 +67,13 @@ export async function sendBroadcast(
   markSent = true
 ): Promise<SendResult> {
   const testMode = b.test_mode === "1";
+  // รูปภาพต้องเป็น https (ข้อกำหนดของ LINE)
+  if (b.message_type === "image") {
+    const url = (b.image_url ?? "").trim();
+    if (!/^https:\/\//i.test(url)) {
+      return { ok: false, count: 0, testMode, blocked: "รูปภาพต้องเป็นลิงก์ https:// ที่เปิดดูได้ (เช่นจาก Google Drive แบบแชร์รูปตรง หรือ imgur)" };
+    }
+  }
   let recipients: Member[];
   if (testMode) {
     // โหมดทดสอบ: ส่งหาแอดมินเท่านั้น
@@ -132,6 +147,7 @@ export async function createBroadcast(input: Partial<Broadcast>): Promise<string
     created_at: nowISO(),
     sent_at: "",
     result_json: "",
+    image_url: input.image_url ?? "",
   });
   return id;
 }

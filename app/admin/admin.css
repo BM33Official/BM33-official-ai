@@ -56,6 +56,9 @@
   --ok: #17a34a;     --ok-soft: #e6f7ec;
   --blue: #2f6fed;   --blue-soft: #e8f0fe;
 
+  /* legacy system font — used for message previews & thin/muted text (LINE Seed reads too light there) */
+  --font-legacy: -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", "Helvetica Neue", sans-serif;
+
   --radius: 16px;
   --radius-lg: 20px;
   --radius-sm: 11px;
@@ -256,10 +259,15 @@ textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
 .field { margin-bottom: 15px; }
 .field > label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 7px; color: var(--text); }
 .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.hint { font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+/* thin/muted helper text — legacy font (LINE Seed reads too light at this size) */
+.hint { font-family: var(--font-legacy); font-size: 12.5px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+
+/* message body you type = same legacy font as the LINE preview, so they match */
+textarea { font-family: var(--font-legacy); }
 
 /* ---------------- Flex card preview ---------------- */
-.preview {
+/* preview bubbles render the actual LINE message text → legacy font (matches app feel) */
+.preview { font-family: var(--font-legacy);
   max-width: 300px; border-radius: 16px; overflow: hidden;
   border: 1px solid var(--line); box-shadow: var(--shadow-lg); background: #fff;
 }

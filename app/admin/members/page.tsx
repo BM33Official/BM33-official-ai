@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 
 export default async function Members() {
-  requireAuth();
+  requireAdmin();
   await ensureBcTabs();
   const [members, roster] = await Promise.all([readMembers(true), readRoster()]);
 

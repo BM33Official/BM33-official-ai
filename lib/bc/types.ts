@@ -30,12 +30,14 @@ export const HEADERS: Record<keyof typeof TABS, string[]> = {
     "button_label", "button_action", "button_value", "segment_form_id",
     "segment_condition", "status", "schedule_at", "recurring", "test_mode",
     "created_by", "approved_by", "created_at", "sent_at", "result_json",
+    "image_url",
   ],
   sendLog: ["broadcast_id", "student_id", "line_user_id", "round", "sent_at"],
   // คอลัมน์ใหม่ต่อท้าย created_at เสมอ เพื่อไม่ให้ข้อมูลเดิมเลื่อนตำแหน่ง
   exams: [
     "exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at",
     "doc_link", "doc_title", "not_filled_ids", "doc_reminder_at", "doc_reminder_status",
+    "doc_reminder_template",
   ],
   summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at", "schedule_at"],
 };
@@ -53,6 +55,7 @@ export interface Exam {
   not_filled_ids: string; // comma-separated student_id ที่ "ยังไม่กรอกเอกสาร" (ติ๊กเอง)
   doc_reminder_at: string; // ISO เวลาที่ตั้งให้ส่งเตือนกรอกเอกสารอัตโนมัติ ("" = ไม่ตั้ง)
   doc_reminder_status: string; // "" | pending | sent
+  doc_reminder_template: string; // ข้อความที่แก้ไว้สำหรับการส่งตามเวลา ("" = ใช้ค่าเริ่มต้น)
 }
 
 export type OnboardingState = "awaiting_info" | "awaiting_confirm" | "done" | "mismatch";
@@ -111,7 +114,8 @@ export interface Broadcast {
   __row?: number;
   id: string;
   title: string;
-  message_type: "text" | "flex";
+  message_type: "text" | "flex" | "image";
+  image_url?: string; // สำหรับ message_type="image" (ต้องเป็น https)
   template_id: string;
   body_text: string;
   header_color: string;

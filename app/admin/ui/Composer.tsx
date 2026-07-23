@@ -5,20 +5,22 @@ import { act } from "./api";
 type FormOpt = { form_id: string; name: string };
 
 type Initial = Partial<{
-  id: string; title: string; body_text: string; message_type: "text" | "flex";
+  id: string; title: string; body_text: string; message_type: "text" | "flex" | "image";
   header_color: string; button_label: string; button_action: "" | "uri" | "postback";
   button_value: string; segment_form_id: string; segment_condition: string; test_mode: string;
+  image_url: string;
 }>;
 
 export default function Composer({ forms, initial }: { forms: FormOpt[]; initial?: Initial }) {
   const [editId] = useState(initial?.id ?? "");
   const [f, setF] = useState({
     title: initial?.title ?? "", body_text: initial?.body_text ?? "",
-    message_type: (initial?.message_type ?? "flex") as "text" | "flex",
+    message_type: (initial?.message_type ?? "flex") as "text" | "flex" | "image",
     header_color: initial?.header_color ?? "#06C755", button_label: initial?.button_label ?? "",
     button_action: (initial?.button_action ?? "") as "" | "uri" | "postback",
     button_value: initial?.button_value ?? "", segment_form_id: initial?.segment_form_id ?? "",
     segment_condition: initial?.segment_condition ?? "undone",
+    image_url: initial?.image_url ?? "",
   });
   const [mode, setMode] = useState<"now" | "schedule" | "recurring">("now");
   const [scheduleAt, setScheduleAt] = useState("");
@@ -103,8 +105,10 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
 
         <div className="field"><label>รูปแบบ</label>
           <div className="row">
-            <select value={f.message_type} onChange={(e) => set({ message_type: e.target.value as "text" | "flex" })}>
-              <option value="flex">การ์ด (มีสี/ปุ่ม)</option><option value="text">ข้อความธรรมดา</option>
+            <select value={f.message_type} onChange={(e) => set({ message_type: e.target.value as "text" | "flex" | "image" })}>
+              <option value="flex">การ์ด (มีสี/ปุ่ม)</option>
+              <option value="text">ข้อความธรรมดา</option>
+              <option value="image">รูปภาพ 🖼️</option>
             </select>
             {f.message_type === "flex" && (
               <label className="row" style={{ gap: 6 }}>สีหัวการ์ด
@@ -114,12 +118,18 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
           </div>
         </div>
 
+        {f.message_type === "image" && (
+          <div className="field"><label>ลิงก์รูปภาพ (https)</label>
+            <input value={f.image_url} onChange={(e) => set({ image_url: e.target.value })} placeholder="https://... (JPEG/PNG · เปิดดูได้แบบสาธารณะ)" />
+            <div className="hint">ต้องเป็นลิงก์ https ที่เปิดดูรูปได้ตรง ๆ เช่น imgur, Cloudinary หรือ Google Drive แบบ uc?export=view&id=… · ใส่ข้อความด้านล่างเป็นแคปชันต่อจากรูปได้</div></div>
+        )}
+
         {f.message_type === "flex" && (
           <div className="field"><label>หัวข้อ (หัวการ์ด)</label>
             <input value={f.title} onChange={(e) => set({ title: e.target.value })} placeholder="เช่น 📢 เก็บเงินรุ่นเดือนนี้" /></div>
         )}
-        <div className="field"><label>ข้อความ</label>
-          <textarea value={f.body_text} onChange={(e) => set({ body_text: e.target.value })} placeholder="พิมพ์ข้อความ… ใช้ {name} เพื่อแทนชื่อผู้รับได้" />
+        <div className="field"><label>{f.message_type === "image" ? "ข้อความประกอบรูป (แคปชัน — ไม่บังคับ)" : "ข้อความ"}</label>
+          <textarea value={f.body_text} onChange={(e) => set({ body_text: e.target.value })} placeholder={f.message_type === "image" ? "ข้อความที่จะส่งต่อจากรูป (เว้นว่างได้)" : "พิมพ์ข้อความ… ใช้ {name} เพื่อแทนชื่อผู้รับได้"} />
           <div className="hint">ใส่ {"{name}"} เพื่อแทนชื่อผู้รับ (จะส่งแบบรายคน)</div></div>
 
         {f.message_type === "flex" && (
@@ -193,6 +203,14 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
             {f.button_action && f.button_label && (
               <div className="pf"><div className="pbtn" style={{ background: f.header_color }}>{f.button_label}</div></div>
             )}
+          </div>
+        ) : f.message_type === "image" ? (
+          <div className="preview" style={{ maxWidth: 300 }}>
+            {f.image_url
+              ? /* eslint-disable-next-line @next/next/no-img-element */
+                <img src={f.image_url} alt="preview" style={{ display: "block", width: "100%", height: "auto" }} onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.25"; }} />
+              : <div className="pb" style={{ textAlign: "center", color: "var(--muted)" }}>วางลิงก์รูปเพื่อดูตัวอย่าง 🖼️</div>}
+            {f.body_text && <div className="pb">{f.body_text}</div>}
           </div>
         ) : (
           <div className="msg" style={{ background: "#e8f7ee", maxWidth: 300 }}>{f.body_text || "ข้อความ…"}</div>

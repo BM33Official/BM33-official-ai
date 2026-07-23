@@ -13,7 +13,7 @@ export default function Login() {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ password: pw }),
     });
-    if (r.ok) { window.location.href = "/admin"; return; }
+    if (r.ok) { const j = await r.json().catch(() => ({})); window.location.href = j.redirect || "/admin"; return; }
     const j = await r.json().catch(() => ({}));
     setErr(j.error || "เข้าสู่ระบบไม่สำเร็จ"); setBusy(false);
   }

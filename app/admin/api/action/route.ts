@@ -1,6 +1,6 @@
 // endpoint รวมสำหรับ mutation ทั้งหมดของ control center (ต้องล็อกอิน)
 import { NextResponse } from "next/server";
-import { isAuthed, adminLineIds } from "@/lib/bc/auth";
+import { isAuthed, currentRole, adminLineIds } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { inspectResponseSheet, addForm } from "@/lib/bc/forms";
 import { setStatus } from "@/lib/bc/status";
@@ -25,6 +25,11 @@ export async function POST(req: Request) {
   if (!isAuthed()) return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   const body = (await req.json().catch(() => ({}))) as { action?: string; [k: string]: unknown };
   const action = body.action ?? "";
+
+  // ฝ่ายวิชาการ: ใช้ได้เฉพาะ action ของแท็บวิชาการเท่านั้น
+  if (currentRole() === "academic" && !action.startsWith("academic.")) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
 
   try {
     await ensureBcTabs();
@@ -109,17 +114,19 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true });
       }
       case "academic.scheduleDoc": {
-        const ok = await scheduleDocReminder(String(body.examId ?? ""), String(body.at ?? ""));
+        const ok = await scheduleDocReminder(String(body.examId ?? ""), String(body.at ?? ""), String(body.template ?? ""));
         return NextResponse.json({ ok });
       }
       case "academic.preview": {
         const exam = body.examId ? await getExam(String(body.examId)) : null;
-        const p = await academicPreview(body.mode as AcademicMode, exam);
+        const opts = { template: body.template as string | undefined, link: body.link as string | undefined };
+        const p = await academicPreview(body.mode as AcademicMode, exam, opts);
         return NextResponse.json({ ok: true, ...p });
       }
       case "academic.broadcast": {
         const exam = body.examId ? await getExam(String(body.examId)) : null;
-        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds(), exam);
+        const opts = { template: body.template as string | undefined, link: body.link as string | undefined };
+        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds(), exam, opts);
         return NextResponse.json({ ...r });
       }
 

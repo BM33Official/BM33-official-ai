@@ -1,4 +1,4 @@
-import { requireAuth } from "@/lib/bc/auth";
+import { requireAdmin } from "@/lib/bc/auth";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readSummaries } from "@/lib/bc/summary";
 import SummaryPanel from "../ui/SummaryPanel";
@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function SummaryPage() {
-  requireAuth();
+  requireAdmin();
   await ensureBcTabs();
   const all = await readSummaries();
   const items = all

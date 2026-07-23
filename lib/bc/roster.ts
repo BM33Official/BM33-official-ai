@@ -49,9 +49,14 @@ function toEntry(row: SheetRow): RosterEntry {
   };
 }
 
+// roster เปลี่ยนน้อยมาก + ถูกอ่านหลายรอบต่อ render (ranking + หน้า) → cache สั้น กัน rate-limit
+let _rosterCache: { rows: RosterEntry[]; at: number } | null = null;
 export async function readRoster(): Promise<RosterEntry[]> {
+  if (_rosterCache && Date.now() - _rosterCache.at < 30_000) return _rosterCache.rows;
   const raw = await readTable("BC_roster");
-  return raw.map(toEntry);
+  const rows = raw.map(toEntry);
+  _rosterCache = { rows, at: Date.now() };
+  return rows;
 }
 
 export interface MatchResult {
