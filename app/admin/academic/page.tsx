@@ -3,7 +3,9 @@ import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readExams, ranking, RED_ZONE_SIZE } from "@/lib/bc/academic";
 import { readRoster } from "@/lib/bc/roster";
 import ExamCreate from "../ui/ExamCreate";
+import ExamActions from "../ui/ExamActions";
 import MarkGrid from "../ui/MarkGrid";
+import DocReminder from "../ui/DocReminder";
 import AcademicBroadcast from "../ui/AcademicBroadcast";
 import { bkkDate } from "@/lib/bc/format";
 
@@ -19,22 +21,27 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
   const selected = searchParams?.exam ? exams.find((e) => e.exam_id === searchParams.exam) : undefined;
   const rows = roster.map((r) => ({ student_id: digits(r.student_id), nickname: r.nickname || r.full_name || digits(r.student_id), name: r.full_name || "" }));
   const initial = selected ? String(selected.not_memorized_ids ?? "").split(",").map(digits).filter(Boolean) : [];
+  const initialDoc = selected ? String(selected.not_filled_ids ?? "").split(",").map(digits).filter(Boolean) : [];
+  const examsLite = exams.map((e) => ({
+    exam_id: e.exam_id, name: e.name, doc_link: e.doc_link ?? "", doc_title: e.doc_title ?? "",
+    doc_reminder_at: e.doc_reminder_at ?? "", doc_reminder_status: e.doc_reminder_status ?? "",
+  }));
 
   return (
     <div className="wrap">
-      <h1>วิชาการ — ติดตามการท่องข้อสอบ</h1>
-      <p className="sub">สร้างข้อสอบ → ติ๊กคนที่ยังไม่ท่อง → ระบบจัดอันดับ &amp; แจ้งเตือนอัตโนมัติ (red zone {RED_ZONE_SIZE} คน)</p>
+      <h1>วิชาการ — ติดตามการจำข้อสอบ</h1>
+      <p className="sub">สร้างข้อสอบ → ติ๊กคนที่ยังไม่ได้จำ → ระบบจัดอันดับ &amp; แจ้งเตือนอัตโนมัติ (red zone {RED_ZONE_SIZE} คน)</p>
 
       <div className="grid g2" style={{ marginBottom: 18 }}>
         <ExamCreate />
-        <AcademicBroadcast />
+        <AcademicBroadcast exams={examsLite} />
       </div>
 
       <h2>ข้อสอบทั้งหมด</h2>
       <div className="card tablecard" style={{ marginBottom: 18 }}>
-        {exams.length === 0 ? <p className="sub" style={{ margin: 0 }}>ยังไม่มีข้อสอบ — สร้างด้านบน</p> : (
+        {exams.length === 0 ? <p className="sub" style={{ margin: 0, padding: 14 }}>ยังไม่มีข้อสอบ — สร้างด้านบน</p> : (
           <table>
-            <thead><tr><th>ชื่อ</th><th>วันสอบ</th><th>จำนวนข้อ</th><th>ยังไม่ท่อง</th><th></th></tr></thead>
+            <thead><tr><th>ชื่อ</th><th>วันสอบ</th><th>เอกสารแบ่งข้อ</th><th>ยังไม่ได้จำ</th><th></th></tr></thead>
             <tbody>
               {[...exams].reverse().map((e) => {
                 const n = String(e.not_memorized_ids ?? "").split(",").filter(Boolean).length;
@@ -42,9 +49,11 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
                   <tr key={e.exam_id}>
                     <td><b>{e.name}</b></td>
                     <td className="hint">{e.exam_date ? bkkDate(e.exam_date) : "-"}</td>
-                    <td>{e.question_count || "-"}</td>
+                    <td>{e.doc_link
+                      ? <a className="badge b-blue" href={e.doc_link} target="_blank" rel="noopener noreferrer">มีลิงก์ ↗</a>
+                      : <span className="badge b-muted">ไม่มี</span>}</td>
                     <td><span className="badge b-warn">{n}</span></td>
-                    <td><a className="btn btn-sm" href={`/admin/academic?exam=${e.exam_id}`}>ทำเครื่องหมาย</a></td>
+                    <td><ExamActions examId={e.exam_id} examName={e.name} /></td>
                   </tr>
                 );
               })}
@@ -54,18 +63,24 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
       </div>
 
       {selected && (
-        <div style={{ marginBottom: 18 }}>
-          <MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initial} />
+        <div className="grid" style={{ marginBottom: 18, gap: 14 }}>
+          <MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initial} variant="memorize" />
+          {selected.doc_link && (
+            <>
+              <MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initialDoc} variant="doc" />
+              <DocReminder examId={selected.exam_id} />
+            </>
+          )}
         </div>
       )}
 
-      <h2>อันดับการท่องข้อสอบ (คนพลาดมากอยู่บน)</h2>
+      <h2>อันดับการจำข้อสอบ (คนพลาดมากอยู่บน)</h2>
       <div className="card tablecard">
         <table>
           <thead><tr><th>#</th><th>ชื่อเล่น</th><th>รหัส</th><th>พลาด (ครั้ง)</th><th>ข้อสอบที่พลาด</th><th>สถานะ</th></tr></thead>
           <tbody>
             {rank.rows.filter((r) => r.misses > 0).map((r, i) => (
-              <tr key={r.student_id} style={r.redzone ? { background: "#ffe9e9" } : undefined}>
+              <tr key={r.student_id} style={r.redzone ? { background: "#fff1f1" } : undefined}>
                 <td>{i + 1}</td>
                 <td><b>{r.nickname}</b>{!r.lineUserId && <span className="badge b-muted" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</td>
                 <td className="hint">{r.student_id}</td>

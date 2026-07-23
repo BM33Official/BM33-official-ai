@@ -32,8 +32,12 @@ export const HEADERS: Record<keyof typeof TABS, string[]> = {
     "created_by", "approved_by", "created_at", "sent_at", "result_json",
   ],
   sendLog: ["broadcast_id", "student_id", "line_user_id", "round", "sent_at"],
-  exams: ["exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at"],
-  summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at"],
+  // คอลัมน์ใหม่ต่อท้าย created_at เสมอ เพื่อไม่ให้ข้อมูลเดิมเลื่อนตำแหน่ง
+  exams: [
+    "exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at",
+    "doc_link", "doc_title", "not_filled_ids", "doc_reminder_at", "doc_reminder_status",
+  ],
+  summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at", "schedule_at"],
 };
 
 export interface Exam {
@@ -41,9 +45,14 @@ export interface Exam {
   exam_id: string;
   name: string;
   exam_date: string;
-  question_count: string;
-  not_memorized_ids: string; // comma-separated student_id ที่ยังไม่ท่อง
+  question_count: string; // legacy — ไม่บังคับกรอกแล้ว
+  not_memorized_ids: string; // comma-separated student_id ที่ยังไม่ได้จำ
   created_at: string;
+  doc_link: string; // ลิงก์เอกสารแบ่งข้อรับผิดชอบ (ให้ทุกคนกรอก)
+  doc_title: string; // ชื่อเอกสาร (ใช้แสดง/บอก AI)
+  not_filled_ids: string; // comma-separated student_id ที่ "ยังไม่กรอกเอกสาร" (ติ๊กเอง)
+  doc_reminder_at: string; // ISO เวลาที่ตั้งให้ส่งเตือนกรอกเอกสารอัตโนมัติ ("" = ไม่ตั้ง)
+  doc_reminder_status: string; // "" | pending | sent
 }
 
 export type OnboardingState = "awaiting_info" | "awaiting_confirm" | "done" | "mismatch";

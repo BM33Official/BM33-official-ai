@@ -14,6 +14,7 @@ export interface Summary {
   __row?: number;
   id: string; week: string; kind: string; title: string; body: string;
   status: string; created_at: string; sent_at: string;
+  schedule_at?: string; // ISO เวลาที่ตั้งให้ส่งอัตโนมัติ ("" = ไม่ตั้ง)
 }
 
 export async function readSummaries(): Promise<Summary[]> {
@@ -38,7 +39,7 @@ export async function personalUndone(member: Member): Promise<string> {
 
   const me = rank.rows.find((r) => r.student_id === sid);
   const nick = me?.nickname || member.display_name || "เพื่อน";
-  if (me && me.misses > 0) undone.push(`• ท่องข้อสอบค้าง ${me.misses} ครั้ง (${me.missedExams.join(", ")})`);
+  if (me && me.misses > 0) undone.push(`• ยังไม่ได้จำข้อสอบ ${me.misses} ครั้ง (${me.missedExams.join(", ")})`);
 
   if (undone.length === 0) return `เยี่ยมมาก ${nick}! ตอนนี้ไม่มีงานค้างเลย ทำครบหมดแล้ว 🎉`;
   return `สวัสดี ${nick} 📋 สิ่งที่ยังไม่ได้ทำตอนนี้:\n\n${undone.join("\n")}\n\nถ้าทำอันไหนไปแล้วแต่ระบบยังไม่อัปเดต ทักผู้ดูแลได้เลยนะ 🙏`;
@@ -54,7 +55,7 @@ export async function generateWeeklySummary(): Promise<Summary> {
     const undone = members.filter((m) => !doneSet.has(digits(m.matched_student_id))).length;
     formLines.push(`- ${f.name}: ยังไม่ทำ ${undone}/${members.length} คน`);
   }
-  const examLines = exams.map((e) => `- ${e.name} (${e.exam_date || "ยังไม่ระบุวัน"}) ยังไม่ท่อง ${String(e.not_memorized_ids ?? "").split(",").filter(Boolean).length} คน`);
+  const examLines = exams.map((e) => `- ${e.name} (${e.exam_date || "ยังไม่ระบุวัน"}) ยังไม่ได้จำ ${String(e.not_memorized_ids ?? "").split(",").filter(Boolean).length} คน`);
   const red = rank.rows.filter((r) => r.redzone).map((r) => r.nickname).join(", ");
 
   const context = `ข้อมูลสัปดาห์นี้ของรุ่น BM33:\nฟอร์ม/งาน:\n${formLines.join("\n") || "- ไม่มี"}\nข้อสอบ:\n${examLines.join("\n") || "- ไม่มี"}\nRed zone: ${red || "-"}`;
@@ -91,7 +92,7 @@ export async function checkDueDates(adminIds: string[], withinDays = 3): Promise
     // dedupe: สร้างครั้งเดียวต่อ exam
     if (existing.some((s) => s.kind === "duedate" && s.title.includes(e.name))) continue;
 
-    const body = `⏰ ใกล้ถึงกำหนดแล้ว: ${e.name} อีก ${days} วัน (${e.exam_date})\nเพื่อน ๆ ที่ยังไม่ได้ท่อง อย่าลืมเตรียมตัวนะ 🙏`;
+    const body = `⏰ ใกล้ถึงกำหนดแล้ว: ${e.name} อีก ${days} วัน (${e.exam_date})\nเพื่อน ๆ ที่ยังไม่ได้จำ อย่าลืมเตรียมตัวนะ 🙏`;
     const id = `DUE-${Date.now().toString(36).toUpperCase()}-${created}`;
     await appendRecord("summaries", { id, week: "", kind: "duedate", title: `ใกล้ถึง: ${e.name}`, body, status: "pending", created_at: nowISO(), sent_at: "" });
     created++;
@@ -120,4 +121,35 @@ export async function sendSummaryToAll(id: string, testMode: boolean, adminIds: 
 export async function updateSummary(s: Summary, patch: Partial<Summary>): Promise<void> {
   if (!s.__row) return;
   await patchRecord("summaries", s.__row, s as never, patch as Record<string, string>);
+}
+
+// ── ตั้งเวลาส่งสรุป/เตือน (สถานะ scheduled) ─────────────────────────────────
+export async function scheduleSummary(id: string, atISO: string, body?: string): Promise<boolean> {
+  const s = await getSummary(id);
+  if (!s?.__row) return false;
+  const patch: Record<string, string> = { status: "scheduled", schedule_at: atISO };
+  if (body != null) patch.body = body;
+  await patchRecord("summaries", s.__row, s as never, patch);
+  return true;
+}
+// ยกเลิกกำหนดเวลา -> กลับเป็น pending
+export async function unscheduleSummary(id: string): Promise<boolean> {
+  const s = await getSummary(id);
+  if (!s?.__row) return false;
+  await patchRecord("summaries", s.__row, s as never, { status: "pending", schedule_at: "" });
+  return true;
+}
+
+// ── cron: ส่งสรุปที่ถึงกำหนดเวลาแล้วอัตโนมัติ ─────────────────────────────────
+export async function runDueSummaries(adminIds: string[], now = Date.now()): Promise<number> {
+  const all = await readSummaries();
+  let sent = 0;
+  for (const s of all) {
+    if (s.status !== "scheduled" || !s.schedule_at) continue;
+    const t = new Date(s.schedule_at).getTime();
+    if (isNaN(t) || t > now) continue;
+    const r = await sendSummaryToAll(s.id, false, adminIds); // ส่งจริงถึงทุกคน
+    if (r.ok) sent++;
+  }
+  return sent;
 }

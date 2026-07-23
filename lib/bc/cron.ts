@@ -6,6 +6,8 @@ import {
   readBroadcasts, sendBroadcast, estimateRecipients, patchBroadcast, createBroadcast,
 } from "@/lib/bc/broadcast";
 import { Broadcast } from "@/lib/bc/types";
+import { runDueDocReminders } from "@/lib/bc/academic";
+import { runDueSummaries } from "@/lib/bc/summary";
 import { log } from "@/lib/logger";
 
 const DAY = 86_400_000;
@@ -20,7 +22,7 @@ function cloneContent(b: Broadcast): Partial<Broadcast> {
   };
 }
 
-export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number; queued: number; done: number }> {
+export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number; queued: number; done: number; docReminders: number; summaries: number }> {
   await ensureBcTabs();
   const admin = adminLineIds();
   const list = await readBroadcasts();
@@ -64,8 +66,13 @@ export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number
     }
   }
 
-  log.info("broadcast_cron", { sent, queued, done });
-  return { sent, queued, done };
+  // ── งานตามเวลาอื่น ๆ: เตือนกรอกเอกสาร (วิชาการ) + สรุปที่ตั้งเวลาไว้ ──
+  let docReminders = 0, summaries = 0;
+  try { docReminders = await runDueDocReminders(admin, now); } catch (err) { log.warn("due_doc_reminders_failed", { message: String(err) }); }
+  try { summaries = await runDueSummaries(admin, now); } catch (err) { log.warn("due_summaries_failed", { message: String(err) }); }
+
+  log.info("broadcast_cron", { sent, queued, done, docReminders, summaries });
+  return { sent, queued, done, docReminders, summaries };
 }
 
 function safeJSON(s: string): Record<string, unknown> {

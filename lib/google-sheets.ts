@@ -94,12 +94,19 @@ export async function updateRange(
   });
 }
 
+function colLetter(n: number): string {
+  let s = "";
+  while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
 // ── สร้างแท็บใหม่ถ้ายังไม่มี + ใส่ header (ใช้โดย control center / BC_ tabs) ──
 export async function ensureTab(
   title: string,
   headers: string[]
 ): Promise<void> {
   const titles = await getSheetTitles();
+  const lastCol = colLetter(headers.length);
   if (!titles.includes(title)) {
     await client().spreadsheets.batchUpdate({
       spreadsheetId: SHEET_ID,
@@ -109,11 +116,39 @@ export async function ensureTab(
     await appendRows(`'${title}'!A1`, [headers]);
     return;
   }
-  // มีแท็บแล้ว — ใส่ header ถ้าแถวแรกว่าง
+  // มีแท็บแล้ว — ใส่/อัปเดต header ให้ตรงกับที่กำหนด (self-migrate เมื่อเพิ่มคอลัมน์ใหม่)
   const first = await getRange(`'${title}'!A1:1`);
-  if (!first.length || !(first[0] ?? []).some((c) => String(c ?? "").trim())) {
-    await appendRows(`'${title}'!A1`, [headers]);
+  const cur = (first[0] ?? []).map((c) => String(c ?? "").trim());
+  const needsWrite = headers.some((h, i) => cur[i] !== h);
+  if (needsWrite) {
+    await updateRange(`'${title}'!A1:${lastCol}1`, [headers]);
   }
+}
+
+// หา numeric sheetId (gid) ของแท็บจากชื่อ
+async function sheetIdByTitle(title: string): Promise<number | null> {
+  const res = await client().spreadsheets.get({
+    spreadsheetId: SHEET_ID,
+    fields: "sheets.properties(title,sheetId)",
+  });
+  const s = res.data.sheets?.find((x) => x.properties?.title === title);
+  return s?.properties?.sheetId ?? null;
+}
+
+// ลบ 1 แถวจริงออกจากแท็บ (rowNumber = เลขแถว 1-indexed ตามที่ readTable คืนใน __row)
+export async function deleteRow(title: string, rowNumber: number): Promise<void> {
+  const sheetId = await sheetIdByTitle(title);
+  if (sheetId == null || rowNumber < 2) return; // ห้ามลบ header
+  await client().spreadsheets.batchUpdate({
+    spreadsheetId: SHEET_ID,
+    requestBody: {
+      requests: [{
+        deleteDimension: {
+          range: { sheetId, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber },
+        },
+      }],
+    },
+  });
 }
 
 // อ่านทั้งแท็บ (แถวแรก = header) คืน records เป็น object[] + เลขแถวจริง

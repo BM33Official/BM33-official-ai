@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import Logout from "./Logout";
 
 const LINKS = [
@@ -15,10 +17,19 @@ const LINKS = [
 
 export default function NavBar() {
   const [c, setC] = useState<Record<string, number>>({});
-  const [path, setPath] = useState("");
+  const pathname = usePathname();
+
   useEffect(() => {
-    setPath(window.location.pathname);
-    fetch("/admin/api/counts").then((r) => r.json()).then((j) => { if (j.ok) setC(j); }).catch(() => {});
+    let alive = true;
+    const load = () =>
+      fetch("/admin/api/counts")
+        .then((r) => r.json())
+        .then((j) => { if (alive && j.ok) setC(j); })
+        .catch(() => {});
+    load();
+    // refresh badges gently while the panel is open
+    const t = setInterval(load, 30_000);
+    return () => { alive = false; clearInterval(t); };
   }, []);
 
   return (
@@ -26,11 +37,12 @@ export default function NavBar() {
       <span className="brand">BM33 · Control Center</span>
       {LINKS.map((l) => {
         const n = l.key ? c[l.key] || 0 : 0;
+        const active = pathname === l.href;
         return (
-          <a key={l.href} href={l.href} className={path === l.href ? "active" : ""}>
+          <Link key={l.href} href={l.href} prefetch className={active ? "active" : ""}>
             {l.label}
             {n > 0 && <span className="navbadge">{n}</span>}
-          </a>
+          </Link>
         );
       })}
       <span className="spacer" />

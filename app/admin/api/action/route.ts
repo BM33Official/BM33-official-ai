@@ -8,8 +8,14 @@ import {
   createBroadcast, patchBroadcast, getBroadcast, sendBroadcast, estimateRecipients,
 } from "@/lib/bc/broadcast";
 import { messageQuota } from "@/lib/line";
-import { addExam, setNotMemorized, academicBroadcast, AcademicMode } from "@/lib/bc/academic";
-import { generateWeeklySummary, getSummary, sendSummaryToAll, updateSummary } from "@/lib/bc/summary";
+import {
+  addExam, deleteExam, setNotMemorized, setNotFilled, scheduleDocReminder,
+  academicBroadcast, academicPreview, getExam, AcademicMode,
+} from "@/lib/bc/academic";
+import {
+  generateWeeklySummary, getSummary, sendSummaryToAll, updateSummary,
+  scheduleSummary, unscheduleSummary,
+} from "@/lib/bc/summary";
 import { Broadcast } from "@/lib/bc/types";
 
 export const runtime = "nodejs";
@@ -82,15 +88,38 @@ export async function POST(req: Request) {
       }
 
       case "academic.addExam": {
-        const id = await addExam(String(body.name ?? ""), String(body.exam_date ?? ""), String(body.question_count ?? ""));
+        const id = await addExam({
+          name: String(body.name ?? ""),
+          exam_date: String(body.exam_date ?? ""),
+          doc_link: String(body.doc_link ?? ""),
+          doc_title: String(body.doc_title ?? ""),
+        });
         return NextResponse.json({ ok: true, exam_id: id });
+      }
+      case "academic.deleteExam": {
+        const ok = await deleteExam(String(body.examId ?? ""));
+        return NextResponse.json({ ok });
       }
       case "academic.setMarks": {
         await setNotMemorized(String(body.examId), (body.ids as string[]) ?? []);
         return NextResponse.json({ ok: true });
       }
+      case "academic.setNotFilled": {
+        await setNotFilled(String(body.examId), (body.ids as string[]) ?? []);
+        return NextResponse.json({ ok: true });
+      }
+      case "academic.scheduleDoc": {
+        const ok = await scheduleDocReminder(String(body.examId ?? ""), String(body.at ?? ""));
+        return NextResponse.json({ ok });
+      }
+      case "academic.preview": {
+        const exam = body.examId ? await getExam(String(body.examId)) : null;
+        const p = await academicPreview(body.mode as AcademicMode, exam);
+        return NextResponse.json({ ok: true, ...p });
+      }
       case "academic.broadcast": {
-        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds());
+        const exam = body.examId ? await getExam(String(body.examId)) : null;
+        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds(), exam);
         return NextResponse.json({ ...r });
       }
 
@@ -103,6 +132,14 @@ export async function POST(req: Request) {
         if (!s) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
         await updateSummary(s, body.patch as Record<string, string>);
         return NextResponse.json({ ok: true });
+      }
+      case "summary.schedule": {
+        const ok = await scheduleSummary(String(body.id ?? ""), String(body.at ?? ""), body.body != null ? String(body.body) : undefined);
+        return NextResponse.json({ ok });
+      }
+      case "summary.unschedule": {
+        const ok = await unscheduleSummary(String(body.id ?? ""));
+        return NextResponse.json({ ok });
       }
       case "summary.sendAll": {
         const r = await sendSummaryToAll(String(body.id), body.testMode !== false, adminLineIds());
