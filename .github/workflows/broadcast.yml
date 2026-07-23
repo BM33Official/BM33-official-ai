@@ -1,0 +1,22 @@
+# ส่ง broadcast ที่ตั้งเวลา + จัดการเตือนซ้ำ — เช็คทุก 15 นาที
+# ต้องตั้ง GitHub Secrets:
+#   BROADCAST_URL          = https://<your-vercel-app>/api/broadcast-cron
+#   BROADCAST_CRON_SECRET  = ค่าเดียวกับที่ตั้งใน Vercel
+name: bm33-broadcast-cron
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # ทุก 15 นาที (เวลา UTC — ใช้ตรวจว่าถึงเวลาส่งหรือยัง)
+  workflow_dispatch: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger broadcast cron
+        run: |
+          code=$(curl -sS -o /tmp/out.txt -w "%{http_code}" \
+            -H "x-cron-secret: ${{ secrets.BROADCAST_CRON_SECRET }}" \
+            "${{ secrets.BROADCAST_URL || vars.BROADCAST_URL }}")
+          echo "HTTP $code"; cat /tmp/out.txt
+          test "$code" = "200"

@@ -8,6 +8,9 @@ import { retrieve, buildContext } from "@/lib/retrieval";
 import { askGemini, captionImage } from "@/lib/gemini";
 import { resolveRoute } from "@/lib/routing";
 import { logMessage } from "@/lib/message-log";
+import { getMember } from "@/lib/bc/members";
+import { handleFollow, handleOnboardingText, handleConfirm } from "@/lib/bc/onboarding";
+import { handleVerifyClaim } from "@/lib/bc/verify";
 import { log } from "@/lib/logger";
 import {
   lineClient,
@@ -99,6 +102,27 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     return;
   }
 
+  // ── follow: เริ่มลงทะเบียนแบบสนทนา ─────────────────────────────────────
+  if (event.type === "follow") {
+    const uid = event.source?.userId;
+    if (uid && event.replyToken) {
+      try {
+        await safeReply(event.replyToken, await handleFollow(uid, await displayName(uid)));
+      } catch (err) {
+        log.error("follow_error", { message: String(err) });
+      }
+    }
+    return;
+  }
+
+  // ── postback: ปุ่มยืนยัน onboarding (verify:<form> จะเพิ่มใน Phase B) ────
+  if (event.type === "postback") {
+    const uid = event.source?.userId;
+    const data = event.postback?.data ?? "";
+    if (uid && event.replyToken) await handlePostback(event.replyToken, uid, data);
+    return;
+  }
+
   if (event.type !== "message") return;
   const message = event.message;
   const source = event.source;
@@ -118,6 +142,12 @@ async function handleEvent(event: webhook.Event): Promise<void> {
 
   if (message.type !== "text") return;
   const rawText = message.text ?? "";
+
+  // ── DM: ลงทะเบียน (ต้องเช็คก่อน Q&A) ──────────────────────────────────
+  if (!isGroup && replyToken && userId) {
+    const handled = await maybeHandleOnboarding(replyToken, userId, rawText);
+    if (handled) return;
+  }
 
   // log groupId (ไม่ใช่ข้อมูลส่วนตัว) — เอาไปใส่ LEARN_GROUP_IDS ได้
   if (isGroup) log.info("group_message", { groupId: groupId ?? "-" });
@@ -148,6 +178,71 @@ async function handleEvent(event: webhook.Event): Promise<void> {
   if (!question) return;
 
   await answerQuestion(replyToken, question, userId);
+}
+
+// ดึงชื่อแสดงผลจาก LINE (สำหรับ onboarding)
+async function displayName(userId: string): Promise<string> {
+  try {
+    const p = await lineClient.getProfile(userId);
+    return p.displayName ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// จัดการ postback (ยืนยัน onboarding); คืนไว้ต่อยอด verify:<form> ใน Phase B
+async function handlePostback(replyToken: string, userId: string, data: string): Promise<void> {
+  try {
+    if (data === "onboard_confirm:yes" || data === "onboard_confirm:no") {
+      const member = await getMember(userId).catch(() => null);
+      if (!member) return;
+      await safeReply(replyToken, await handleConfirm(member, data.endsWith("yes")));
+    } else if (data.startsWith("verify:")) {
+      await safeReply(replyToken, await handleVerifyClaim(userId, data.slice(7)));
+    }
+  } catch (err) {
+    log.error("postback_error", { message: String(err) });
+  }
+}
+
+// DM onboarding — คืน true ถ้าจัดการแล้ว (ไม่ต้องไป Q&A)
+async function maybeHandleOnboarding(
+  replyToken: string,
+  userId: string,
+  rawText: string
+): Promise<boolean> {
+  const t = rawText.trim();
+  const registerCmd = /^(ลงทะเบียน|สมัคร|register|เริ่มลงทะเบียน)/i.test(t);
+
+  let member: Awaited<ReturnType<typeof getMember>>;
+  try {
+    member = await getMember(userId);
+  } catch {
+    return false; // BC ยังไม่พร้อม -> ปล่อยให้ Q&A ทำงาน
+  }
+
+  // ยังไม่เคยลงทะเบียน — เริ่มให้เมื่อพิมพ์คำสั่งลงทะเบียนเท่านั้น (ไม่แย่งถามตอบ)
+  if (!member || member.onboarding_state === "" || member.onboarding_state === "done") {
+    if (registerCmd) {
+      await safeReply(replyToken, await handleFollow(userId, await displayName(userId)));
+      return true;
+    }
+    return false;
+  }
+
+  if (member.onboarding_state === "awaiting_confirm") {
+    if (/^(ใช่|yes|y|ยืนยัน|ถูก|ใช่ค่ะ|ใช่ครับ)/i.test(t))
+      { await safeReply(replyToken, await handleConfirm(member, true)); return true; }
+    if (/^(ไม่|no|n|ผิด)/i.test(t))
+      { await safeReply(replyToken, await handleConfirm(member, false)); return true; }
+    // พิมพ์อย่างอื่น -> ตีความเป็นข้อมูลใหม่
+    await safeReply(replyToken, await handleOnboardingText(member, rawText));
+    return true;
+  }
+
+  // awaiting_info หรือ mismatch -> ตีความเป็นข้อมูลลงทะเบียน
+  await safeReply(replyToken, await handleOnboardingText(member, rawText));
+  return true;
 }
 
 async function answerQuestion(

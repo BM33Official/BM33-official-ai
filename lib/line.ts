@@ -54,3 +54,40 @@ export const ADMIN_ONLY_REPLY =
 export function textMessage(text: string): messagingApi.TextMessage {
   return { type: "text", text };
 }
+
+// ── broadcast helpers ───────────────────────────────────────────────────────
+// ส่งหาหลายคนพร้อมกัน (≤500/ครั้ง) — คืนจำนวนที่ส่งจริง
+export async function multicastTo(
+  userIds: string[],
+  messages: messagingApi.Message[]
+): Promise<number> {
+  let sent = 0;
+  for (let i = 0; i < userIds.length; i += 500) {
+    const batch = userIds.slice(i, i + 500);
+    if (batch.length === 0) continue;
+    await lineClient.multicast({ to: batch, messages });
+    sent += batch.length;
+  }
+  return sent;
+}
+
+// ส่งรายคน (ใช้ตอน personalize {name})
+export async function pushTo(
+  userId: string,
+  messages: messagingApi.Message[]
+): Promise<void> {
+  await lineClient.pushMessage({ to: userId, messages });
+}
+
+// โควตาข้อความคงเหลือของเดือนนี้ (LINE push quota)
+export async function messageQuota(): Promise<{ limit: number | null; used: number; remaining: number | null }> {
+  try {
+    const q = await lineClient.getMessageQuota();
+    const c = await lineClient.getMessageQuotaConsumption();
+    const used = c.totalUsage ?? 0;
+    const limit = q.type === "limited" ? (q.value ?? null) : null;
+    return { limit, used, remaining: limit === null ? null : Math.max(0, limit - used) };
+  } catch {
+    return { limit: null, used: 0, remaining: null };
+  }
+}

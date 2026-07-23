@@ -94,4 +94,84 @@ export async function updateRange(
   });
 }
 
+// ── สร้างแท็บใหม่ถ้ายังไม่มี + ใส่ header (ใช้โดย control center / BC_ tabs) ──
+export async function ensureTab(
+  title: string,
+  headers: string[]
+): Promise<void> {
+  const titles = await getSheetTitles();
+  if (!titles.includes(title)) {
+    await client().spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+    });
+    _titleCache = null; // invalidate — จะได้เห็นแท็บใหม่รอบหน้า
+    await appendRows(`'${title}'!A1`, [headers]);
+    return;
+  }
+  // มีแท็บแล้ว — ใส่ header ถ้าแถวแรกว่าง
+  const first = await getRange(`'${title}'!A1:1`);
+  if (!first.length || !(first[0] ?? []).some((c) => String(c ?? "").trim())) {
+    await appendRows(`'${title}'!A1`, [headers]);
+  }
+}
+
+// อ่านทั้งแท็บ (แถวแรก = header) คืน records เป็น object[] + เลขแถวจริง
+export interface SheetRow {
+  __row: number; // เลขแถวจริงในชีต (1-indexed)
+  [key: string]: string | number;
+}
+export async function readTable(title: string, lastCol = "Z"): Promise<SheetRow[]> {
+  const grid = await getRange(`'${title}'!A1:${lastCol}`);
+  if (grid.length < 1) return [];
+  const header = (grid[0] ?? []).map((h) => String(h ?? "").trim());
+  const out: SheetRow[] = [];
+  for (let r = 1; r < grid.length; r++) {
+    const cells = grid[r] ?? [];
+    if (cells.every((c) => !String(c ?? "").trim())) continue;
+    const row: SheetRow = { __row: r + 1 };
+    header.forEach((h, i) => { if (h) row[h] = String(cells[i] ?? ""); });
+    out.push(row);
+  }
+  return out;
+}
+
+// ── อ่านสเปรดชีตอื่น (response sheet ของฟอร์มที่มี spreadsheetId ต่างจากตัวหลัก) ──
+export async function getForeignTitles(spreadsheetId: string): Promise<string[]> {
+  const res = await client().spreadsheets.get({
+    spreadsheetId, fields: "sheets.properties.title",
+  });
+  return res.data.sheets?.map((s) => s.properties?.title ?? "").filter(Boolean) ?? [];
+}
+
+export async function readForeignTable(
+  spreadsheetId: string,
+  tab: string,
+  lastCol = "Z"
+): Promise<SheetRow[]> {
+  const res = await client().spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${tab}'!A1:${lastCol}`,
+    valueRenderOption: "FORMATTED_VALUE",
+  });
+  const grid = (res.data.values as string[][] | undefined) ?? [];
+  if (grid.length < 1) return [];
+  const header = (grid[0] ?? []).map((h) => String(h ?? "").trim());
+  const out: SheetRow[] = [];
+  for (let r = 1; r < grid.length; r++) {
+    const cells = grid[r] ?? [];
+    if (cells.every((c) => !String(c ?? "").trim())) continue;
+    const row: SheetRow = { __row: r + 1 };
+    header.forEach((h, i) => { if (h) row[h] = String(cells[i] ?? ""); });
+    out.push(row);
+  }
+  return out;
+}
+
+// ดึง spreadsheetId จากลิงก์ Google Sheet
+export function parseSheetId(url: string): string | null {
+  const m = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return m ? m[1] : url.trim().length > 20 && !url.includes("/") ? url.trim() : null;
+}
+
 export { SHEET_ID };
