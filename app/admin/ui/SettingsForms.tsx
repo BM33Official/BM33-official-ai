@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { act } from "./api";
 
 export function ConfigField({ k, label, value, hint, textarea, placeholder }: { k: string; label: string; value: string; hint?: string; textarea?: boolean; placeholder?: string }) {
@@ -82,6 +82,39 @@ export function CommitteeEditor({ rows: init, roster }: { rows: C[]; roster: { s
         {msg && <span className="badge b-ok">{msg}</span>}
       </div>
       <p className="hint" style={{ padding: "0 10px 8px" }}>ข้อความในกลุ่มจากคนในรายชื่อนี้ = ประกาศทางการ (ระบบดึงขึ้นแอปเอง) · ตำแหน่งที่มีคำว่า “ประธาน” จะเป็นปุ่มแรกในการ์ดติดต่อเมื่อบอทตอบไม่ได้</p>
+    </div>
+  );
+}
+
+export function RichMenuPanel() {
+  const [st, setSt] = useState<{ ours: string; current: string; isDefault: boolean } | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = async () => { const r = await act("richmenu.status"); if (r.ok) setSt(r as never); };
+  useEffect(() => { load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  async function run(action: string, confirmText?: string) {
+    if (confirmText && !confirm(confirmText)) return;
+    setBusy(true); setMsg("");
+    const r = await act(action);
+    setBusy(false);
+    setMsg(r.ok ? "เรียบร้อย ✅" : `ไม่สำเร็จ: ${r.error}`);
+    load();
+  }
+  return (
+    <div className="card">
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <b>เมนู 6 ปุ่มใน LINE (rich menu)</b>
+        <span className={`badge ${st?.isDefault ? "b-ok" : st?.ours ? "b-warn" : "b-muted"}`}>{st ? (st.isDefault ? "ทุกคนใช้เมนูใหม่แล้ว" : st.ours ? "สร้างแล้ว · ยังไม่เปิดให้ทุกคน" : "ยังไม่สร้าง") : "…"}</span>
+      </div>
+      <img src="/rich-menu-v2.jpg" alt="rich menu" style={{ width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 10, border: "1px solid var(--line)" }} />
+      <p className="hint">ปุ่ม: หน้าหลัก · ประกาศ & งาน · ตารางเรียน · ของฉัน · เซียมซี (เปิดแอปตรงแท็บนั้น) · ถามบอท (คำถามยอดฮิต + ติดต่อกรรมการ)</p>
+      <div className="row">
+        {!st?.ours && <button className="btn-primary btn-sm" disabled={busy} onClick={() => run("richmenu.create")}>สร้างเมนู</button>}
+        {st?.ours && <button className="btn-sm" disabled={busy} onClick={() => run("richmenu.linkMe")}>ลองใช้เฉพาะบัญชีฉัน</button>}
+        {st?.ours && <button className="btn-sm btn-ghost" disabled={busy} onClick={() => run("richmenu.unlinkMe")}>เลิกลอง (กลับเมนูเดิม)</button>}
+        {st?.ours && !st.isDefault && <button className="btn-green btn-sm" disabled={busy} onClick={() => run("richmenu.setDefault", "เปิดใช้เมนูใหม่กับเพื่อน ๆ ทุกคนเลยไหม?")}>เปิดใช้กับทุกคน</button>}
+        {msg && <span className="badge b-ok">{msg}</span>}
+      </div>
     </div>
   );
 }

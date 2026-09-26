@@ -34,6 +34,8 @@ import { listFlashModels, activeModel } from "@/lib/gemini";
 import { archivePack } from "@/lib/ai/knowledge";
 import { readRoster } from "@/lib/bc/roster";
 import { bust } from "@/lib/cache";
+import { richMenuStatus, createRichMenuV2, linkRichMenu, unlinkRichMenu, setDefaultRichMenu } from "@/lib/bc/richmenu";
+import { approverIds } from "@/lib/bc/config";
 import { Broadcast, DailyItem, ScheduleItem, UniExam, Announcement } from "@/lib/bc/types";
 
 export const runtime = "nodejs";
@@ -275,6 +277,29 @@ export async function POST(req: Request) {
       case "ai.refresh":
         bust("knowledge");
         return j({});
+
+      // ── rich menu (เมนู 6 ปุ่มใน LINE) ─────────────────────────────────────
+      case "richmenu.status":
+        return j({ ...(await richMenuStatus()) });
+      case "richmenu.create":
+        return j({ id: await createRichMenuV2(new URL(req.url).origin) });
+      case "richmenu.linkMe": {
+        const st = await richMenuStatus();
+        if (!st.ours) return NextResponse.json({ ok: false, error: "ยังไม่ได้สร้างเมนู" }, { status: 400 });
+        const ids = await approverIds();
+        for (const u of ids) await linkRichMenu(u, st.ours);
+        return j({ linked: ids.length });
+      }
+      case "richmenu.unlinkMe": {
+        for (const u of await approverIds()) await unlinkRichMenu(u).catch(() => {});
+        return j({});
+      }
+      case "richmenu.setDefault": {
+        const st = await richMenuStatus();
+        if (!st.ours) return NextResponse.json({ ok: false, error: "ยังไม่ได้สร้างเมนู" }, { status: 400 });
+        await setDefaultRichMenu(st.ours);
+        return j({});
+      }
 
       default:
         return NextResponse.json({ ok: false, error: "unknown action" }, { status: 400 });

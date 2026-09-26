@@ -14,7 +14,8 @@ export type ConfigKey =
   | "reminder_plan" // เช่น "3,1,0" = เตือนก่อน 3 วัน, 1 วัน, วันจริง
   | "portal_notice" // ข้อความประกาศด่วนบนหัวแอป
   | "semester_label"
-  | "president_student_id";
+  | "president_student_id"
+  | "rich_menu_v2_id";
 
 export async function getConfig(): Promise<Record<string, string>> {
   const rows = await readKey("config");

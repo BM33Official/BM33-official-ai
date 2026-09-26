@@ -3,7 +3,7 @@ import { getConfig } from "@/lib/bc/config";
 import { readCommittee, seedCommitteeIfEmpty } from "@/lib/bc/committee";
 import { readRoster } from "@/lib/bc/roster";
 import PageHead from "../ui/PageHead";
-import { ConfigField, RolePassword, CommitteeEditor } from "../ui/SettingsForms";
+import { ConfigField, RolePassword, CommitteeEditor, RichMenuPanel } from "../ui/SettingsForms";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +33,9 @@ export default async function SettingsPage() {
         <ConfigField k="semester_label" label="ชื่อภาคเรียน (แสดงในหน้าตาราง)" value={cfg.semester_label ?? ""} placeholder="เช่น ปี 2 ภาคเรียนที่ 1/2569" />
         <ConfigField k="red_zone_size" label="จำนวนคนใน Red Zone" value={cfg.red_zone_size ?? "6"} hint="อันดับแรก ๆ ของคะแนนสะสม (ค่าเริ่มต้น 6)" />
       </div>
+
+      <h2>📲 เมนู LINE</h2>
+      <RichMenuPanel />
 
       <h2>🔔 การเตือน & การอนุมัติ</h2>
       <div className="card">
