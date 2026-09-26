@@ -55,6 +55,11 @@ export async function adminBlock(): Promise<string> {
   const lines: string[] = [];
   const verified = members.filter((m) => m.status === "verified").length;
   lines.push(`ลงทะเบียนแล้ว ${verified}/${roster.length} คน`);
+  const regSet = new Set(members.filter((m) => m.status === "verified").map((m) => digits(m.matched_student_id)));
+  const notReg = roster.filter((r) => !regSet.has(r.student_id));
+  if (notReg.length) lines.push(`ยังไม่ลงทะเบียน (${notReg.length} คน): ${notReg.map((r) => `${r.nickname || r.full_name}(${Number(r.student_id.slice(-3))})`).join(", ")}`);
+  const appUsers = members.filter((m) => m.portal_confirmed_at).length;
+  lines.push(`เปิดแอป BM33 แล้ว ${appUsers} คน`);
   const thisMonth = bkkDayKey().slice(0, 7);
   for (const m of months.filter((x) => x.month <= thisMonth).slice(-3)) {
     const unpaid = roster.filter((r) => ["unpaid", "overdue"].includes(matrix.cell(r.student_id, m.month)));

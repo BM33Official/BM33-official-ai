@@ -23,18 +23,20 @@ interface ModelInfo { name: string; version: number; lite: boolean; preview: boo
 
 function parseModel(name: string): ModelInfo | null {
   const n = name.replace(/^models\//, "");
+  if (/tts|image|audio|live|embedding/i.test(n)) return null;
   const m = n.match(/^gemini-(\d+(?:\.\d+)?)-flash(-lite)?(?:-(latest|\d{3}|preview(?:-[\w.-]+)?|exp(?:-[\w.-]+)?))?$/);
   if (!m) return null;
   return { name: n, version: Number(m[1]), lite: !!m[2], preview: /preview|exp/.test(m[3] ?? "") };
 }
 
 export async function listFlashModels(): Promise<string[]> {
-  return cached("gemini:models:v2", ["gemini-models"], 6 * 3600, async () => {
+  return cached("gemini:models:v3", ["gemini-models"], 6 * 3600, async () => {
     const out: ModelInfo[] = [];
     const pager = await getAi().models.list({ config: { pageSize: 200 } });
     for await (const m of pager) {
       const actions = (m as { supportedActions?: string[] }).supportedActions ?? [];
       if (actions.length && !actions.includes("generateContent")) continue;
+      if (/tts|image|audio|live|embedding/i.test(m.name ?? "")) continue;
       const p = parseModel(m.name ?? "");
       if (p) out.push(p);
     }
