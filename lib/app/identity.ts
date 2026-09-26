@@ -32,7 +32,8 @@ async function sameProviderFriend(sub: string): Promise<boolean> {
 }
 
 export async function resolveSub(sub: string): Promise<ResolveResult> {
-  const members = await readMembers(true);
+  // อ่านจาก snapshot (cache แชร์) — 100 คนเปิดแอปพร้อมกันก็ไม่ยิงชีต; การผูกบัญชีจะล้าง cache เอง
+  const members = await readMembers();
   const byLiff = members.find((m) => m.liff_user_id === sub && m.status === "verified" && m.matched_student_id);
   if (byLiff && byLiff.portal_confirmed_at) return { step: "ready", sid: digits(byLiff.matched_student_id) };
   const byBot = byLiff ?? members.find((m) => m.line_user_id === sub && m.status === "verified" && m.matched_student_id);

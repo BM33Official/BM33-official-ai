@@ -70,9 +70,11 @@ export async function POST(req: Request, { params }: { params: { action: string 
         if (!who) return bad("id_token_invalid", 401);
         const r = await resolveSub(who.sub);
         if (r.step === "ready") {
-          // บันทึกเวลาเปิดแอปล่าสุด (ไม่เกินชั่วโมงละครั้ง)
-          if (!throttled(`seen:${who.sub}`, 3600_000)) {
-            getMember(who.sub).then((m) => m && patchMember(m, { last_seen_at: nowISO() })).catch(() => {});
+          // บันทึกเวลาเปิดแอปล่าสุด (ไม่เกิน 6 ชม.ต่อครั้งต่อคน — ประหยัดโควตาเขียนชีต)
+          if (!throttled(`seen:${who.sub}`, 6 * 3600_000)) {
+            const m = await getMember(who.sub).catch(() => null);
+            const last = m?.last_seen_at ? new Date(m.last_seen_at).getTime() : 0;
+            if (m && Date.now() - last > 6 * 3600_000) await patchMember(m, { last_seen_at: nowISO() }).catch(() => {});
           }
           return withSession({ ok: true, step: "ready" }, signSession({ sid: r.sid, uid: who.sub }));
         }
