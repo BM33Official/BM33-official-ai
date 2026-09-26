@@ -131,7 +131,7 @@ export function useCollapsingTitle(scrollEl: HTMLElement | null, threshold = 56)
   return collapsed;
 }
 
-export function Toast({ text }: { text: string }) {
+export function Toast({ text, n = 0 }: { text: string; n?: number }) {
   const [shown, setShown] = useState("");
   const [on, setOn] = useState(false);
   useEffect(() => {
@@ -140,7 +140,7 @@ export function Toast({ text }: { text: string }) {
     setOn(true);
     const t = setTimeout(() => setOn(false), 2600);
     return () => clearTimeout(t);
-  }, [text]);
+  }, [text, n]);
   return <div className={`toast glass ${on ? "on" : ""}`}>{shown}</div>;
 }
 

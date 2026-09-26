@@ -21,17 +21,26 @@ export default function PortalApp() {
   const [meSection, setMeSection] = useState<string | undefined>();
   const [openId, setOpenId] = useState<string | null>(null);
   const [energy, setEnergy] = useState(0);
-  const [toast, setToast] = useState("");
+  const [toast, setToastRaw] = useState({ t: "", n: 0 });
+  const setToast = useCallback((t: string) => setToastRaw((x) => ({ t, n: x.n + 1 })), []);
   const [scrolled, setScrolled] = useState(false);
   const screens = useRef<Partial<Record<TabKey, HTMLElement | null>>>({});
   const now = useNow(1000, phase.kind === "ready");
 
   // แท็บเริ่มต้นจากลิงก์ (?tab=news) — ใช้กับปุ่มเมนู LINE
+  // LIFF ส่งพารามิเตอร์มาใน liff.state (เช่น ?liff.state=%3Ftab%3Dnews) ก่อน init เสร็จ -> อ่านทั้งสองแบบ
   useEffect(() => {
-    const t = new URL(window.location.href).searchParams.get("tab") as TabKey | null;
-    if (t && TABS.some((x) => x.key === t)) setTab(t);
-    const ann = new URL(window.location.href).searchParams.get("a");
-    if (ann) setOpenId(ann);
+    const read = () => {
+      const u = new URL(window.location.href);
+      const inner = new URLSearchParams((u.searchParams.get("liff.state") ?? "").replace(/^[^?]*\?/, ""));
+      const t = (u.searchParams.get("tab") ?? inner.get("tab")) as TabKey | null;
+      if (t && TABS.some((x) => x.key === t)) setTab(t);
+      const ann = u.searchParams.get("a") ?? inner.get("a");
+      if (ann) setOpenId(ann);
+    };
+    read();
+    const t = setTimeout(read, 1500); // หลัง LIFF แทนที่ URL
+    return () => clearTimeout(t);
   }, []);
 
   // แถบชื่อบางด้านบนเมื่อเลื่อน
@@ -121,7 +130,7 @@ export default function PortalApp() {
       </Sheet>
 
       <DrawOverlay data={data} now={now} />
-      <Toast text={toast} />
+      <Toast text={toast.t} n={toast.n} />
     </>
   );
 }

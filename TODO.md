@@ -49,13 +49,28 @@ Legend: `[x]` done & verified · `[~]` in progress · `[ ]` not started
 
 ## 6. Automation
 - [x] Cron: daily summary (05:30 BKK), deadline reminders → outbox (+ DM owner), draw notifications, form deadlines
-- [ ] Rich menu image (6 buttons) + upload script; link to owner only for testing
+- [x] Rich menu image (6 buttons) created on LINE (`richmenu-aff5a35ca96c3c1d979451dad357119e`), linked to owner only · Settings → เมนู LINE → “เปิดใช้กับทุกคน”
 
 ## 7. Verify & ship
 - [x] typecheck + build clean
-- [ ] Local dev run + headless Chrome screenshots of /app (phone + iPad) and /admin
-- [ ] Deploy (preview → main), prod smoke tests (AI console, state API)
-- [ ] ARCHITECTURE.md, README, CLAUDE.md, memory + wiki log
+- [x] Local dev run + headless Chrome screenshots of /app (phone + iPad) and /admin (all tabs, sheet, spin, reveal, draw overlay)
+- [x] Deployed to production (main). Smoke tests: all admin pages 200, AI console (gemini-3.8-flash, 3–7 s, ~95% prompt cache), injection refused, contact card on unknown, app auth rejects bogus tokens, finance role isolated, broadcast cron 200
+- [x] ARCHITECTURE.md, README, CLAUDE.md, memory + wiki log
+- [x] `scripts/test-flows.ts` — 22/22 write-path checks pass against the real sheet
+- [x] Re-enabled GitHub cron workflows (were `disabled_inactivity` since 22 Sep — no cron had run for 5 days)
 
-## NEEDS USER ACTION
-- (none yet)
+## NEEDS USER ACTION (things I was not allowed to / could not do)
+1. **Try the new LINE menu** — it is linked to *your* account only. Open the BM33 chat → tap หน้าหลัก → confirm “นี่คือคุณใช่ไหม?”. When happy: `/admin/settings` → เมนู LINE → **เปิดใช้กับทุกคน** (this changes what all 100 classmates see, so I left it to you).
+2. **LIFF channel check** (LINE Developers → BM33 Member): must be **Published**; ideally in the **same provider** as the BM33 OA (then app login and bot share the same user id). Also turn on **shareTargetPicker** in the LIFF app settings (fortune “ส่งให้เพื่อน” button).
+3. **Finance password** is in `finance-password.secret.local` (git-ignored) → give it to เค้ก. Academic password: set/generate in Settings if the academic team needs a new one.
+4. **Is the bot in the main class chat?** Only 1 group message was logged since 23 Jul. If the class uses an **OpenChat**, bots cannot join it — then committee should DM the bot `ประกาศ <ข้อความ>` or paste into `/admin/announcements` (both go straight to the app).
+5. **Fill the app with real data**: upload the current block timetable + exam dates (`/admin/schedule`), set fee months + payment info (finance), add current forms with deadlines (`/admin/forms`).
+6. **LINE plan**: buy the 15,000-message plan when ready; overview shows the quota meter.
+7. (optional) delete my two harmless test rows: `BC_payments` and `BC_fortunes` rows with student_id `0000000999`.
+8. Keep at least one commit every 60 days, or GitHub disables the cron workflows again (Settings → Actions → enable).
+
+## Ideas / next steps (not started)
+- Weekly “streak leaderboard” for the fortune (opt-in, anonymous by default)
+- Push-free “what's new since you last opened” badge per announcement (read receipts stored per member)
+- Attach images/posters to announcements (Drive link → thumbnail)
+- Per-member reminders in LINE for fees due (needs approval flow per recipient list — already supported via `ids:` audience)
