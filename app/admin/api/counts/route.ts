@@ -1,44 +1,35 @@
-// นับรายการที่ "ต้องสนใจ" ต่อแท็บ (สำหรับ badge แจ้งเตือนสีแดง)
+// นับรายการที่ "ต้องสนใจ" ต่อเมนู (badge สีแดง) — อ่านจาก snapshot (cache) ไม่ยิงชีตเพิ่ม
 import { NextResponse } from "next/server";
-import { isAuthed, currentRole } from "@/lib/bc/auth";
-import { ensureBcTabs } from "@/lib/bc/sheets";
-import { readMembers } from "@/lib/bc/members";
-import { readOverlay } from "@/lib/bc/status";
-import { readBroadcasts } from "@/lib/bc/broadcast";
-import { readTable } from "@/lib/google-sheets";
+import { currentRole } from "@/lib/bc/auth";
+import { snapshot } from "@/lib/bc/sheets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  if (!isAuthed()) return NextResponse.json({ ok: false }, { status: 401 });
-  const role = currentRole();
-  // ฝ่ายวิชาการเห็นแค่แท็บวิชาการ — ไม่ต้องนับ badge อื่น (ประหยัด read)
-  if (role === "academic") return NextResponse.json({ ok: true, role });
+  const role = await currentRole();
+  if (!role) return NextResponse.json({ ok: false }, { status: 401 });
+  if (role !== "admin") return NextResponse.json({ ok: true, role });
   try {
-    await ensureBcTabs();
-    const [members, overlay, broadcasts, buffer, pending] = await Promise.all([
-      readMembers(true), readOverlay(true), readBroadcasts(),
-      readTable("07_ข้อความทั้งหมด").catch(() => []),
-      readTable("BC_summaries").catch(() => []),
-    ]);
-    const inProgress = members.filter((m) => m.onboarding_state && m.onboarding_state !== "done").length;
-    const claims = overlay.filter((o) => o.state === "claimed").length;
-    const mismatch = members.filter((m) => m.onboarding_state === "mismatch").length;
-    const newBuffer = buffer.filter((r) => { const s = String(r["สถานะเรียนรู้"] ?? "").trim(); return !s || s === "new"; }).length;
-    const pendingBc = broadcasts.filter((b) => ["draft", "pending", "scheduled"].includes(b.status)).length;
-    const pendingSummaries = pending.filter((r) => String(r["status"] ?? "") === "pending").length;
-
+    const s = await snapshot();
+    const str = (v: unknown) => String(v ?? "");
+    const now = Date.now();
+    const pendingOutbox = s.outbox.filter((o) => str(o.status) === "pending" && !(o.expires_at && new Date(str(o.expires_at)).getTime() < now)).length;
+    const claims = s.status.filter((o) => str(o.state) === "claimed").length;
+    const mismatch = s.members.filter((m) => str(m.onboarding_state) === "mismatch").length;
+    const inProgress = s.members.filter((m) => str(m.onboarding_state) && !["done", "mismatch"].includes(str(m.onboarding_state))).length;
+    const pendingBc = s.broadcasts.filter((b) => ["pending"].includes(str(b.status))).length;
+    const drafts = s.announcements.filter((a) => str(a.status) === "draft").length;
     return NextResponse.json({
       ok: true,
       role,
+      inbox: pendingOutbox + claims + mismatch,
       members: inProgress,
-      inbox: claims + mismatch,
-      learning: newBuffer,
       broadcasts: pendingBc,
-      summary: pendingSummaries,
+      announcements: drafts,
+      learning: 0,
     });
   } catch {
-    return NextResponse.json({ ok: false });
+    return NextResponse.json({ ok: true, role });
   }
 }

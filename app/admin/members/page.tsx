@@ -1,8 +1,8 @@
 import { requireAdmin } from "@/lib/bc/auth";
-import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
 import MembersTable, { MemberRow } from "../ui/MembersTable";
+import PageHead from "../ui/PageHead";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,8 +10,7 @@ export const dynamic = "force-dynamic";
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 
 export default async function Members() {
-  requireAdmin();
-  await ensureBcTabs();
+  await requireAdmin();
   const [members, roster] = await Promise.all([readMembers(true), readRoster()]);
 
   // จับคู่ member กับ student_id (verified ก่อน แล้ว pending)
@@ -39,6 +38,8 @@ export default async function Members() {
       line_name: m?.display_name || "",
       state,
       onboarded_at: m?.onboarded_at || "",
+      app: m?.portal_confirmed_at ? "yes" : "",
+      last_seen: m?.last_seen_at || "",
     };
   });
 
@@ -52,8 +53,10 @@ export default async function Members() {
       full_name: m.claimed_name || "",
       nickname: "",
       line_name: m.display_name || "",
-      state: m.status === "verified" ? "verified" : "onboarding",
+      state: m.status === "verified" ? "verified" : m.status === "mismatch" ? "mismatch" : "onboarding",
       onboarded_at: m.onboarded_at || "",
+      app: m.portal_confirmed_at ? "yes" : "",
+      last_seen: m.last_seen_at || "",
     });
   }
 
@@ -63,8 +66,7 @@ export default async function Members() {
 
   return (
     <div className="wrap">
-      <h1>สมาชิก</h1>
-      <p className="sub">ทุกคนในทะเบียนรุ่น {roster.length} คน — เรียงตามรหัส นศ. · เห็นชัดว่าใครยังไม่แอดบอท/ยังไม่ลงทะเบียน</p>
+      <PageHead icon="👥" title="สมาชิก" desc={`ทุกคนในทะเบียนรุ่น ${roster.length} คน — ใครยืนยันตัวตนแล้ว (ทางบอทหรือแอป) ใครเปิดแอปแล้ว และใครยังไม่ได้เข้าร่วม`} />
       <MembersTable rows={rows} total={roster.length} verified={verified} onboarding={onboarding} missing={missing} />
     </div>
   );

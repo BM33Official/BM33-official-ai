@@ -146,3 +146,80 @@ export function handoffFlex(info: RouteInfo): messagingApi.FlexMessage {
     },
   };
 }
+
+// ── v2 ──────────────────────────────────────────────────────────────────────
+const BLUE = "#1D4ED8";
+
+// การ์ดปุ่มลิงก์ (สูงสุด 4) — ใช้แนบท้ายคำตอบของ AI / ประกาศ
+export function linksFlex(links: { label: string; url: string }[], title = "ลิงก์ที่เกี่ยวข้อง"): messagingApi.FlexMessage {
+  const btns = links.filter((l) => /^https?:\/\//.test(l.url)).slice(0, 4);
+  return {
+    type: "flex",
+    altText: title,
+    contents: {
+      type: "bubble", size: "kilo",
+      body: {
+        type: "box", layout: "vertical", spacing: "sm", paddingAll: "14px",
+        contents: [
+          { type: "text", text: title, weight: "bold", size: "sm", color: "#0F172A" },
+          ...btns.map((l, i): messagingApi.FlexButton => ({
+            type: "button", style: i === 0 ? "primary" : "secondary", height: "sm", color: i === 0 ? BLUE : undefined,
+            action: { type: "uri", label: (l.label || "เปิดลิงก์").slice(0, 20), uri: l.url },
+          })),
+        ],
+      },
+    },
+  };
+}
+
+// การ์ดติดต่อคนดูแล — ประธานรุ่นอยู่ปุ่มแรกเสมอ + ฝ่ายที่เกี่ยวข้อง
+export async function contactFlex(topic = "อื่นๆ"): Promise<messagingApi.FlexMessage> {
+  const { readCommittee } = await import("@/lib/bc/committee");
+  const { ROUTING } = await import("@/lib/routing");
+  let committee: Awaited<ReturnType<typeof readCommittee>> = [];
+  try { committee = await readCommittee(); } catch { /* ใช้ค่าตั้งต้น */ }
+  const pres = committee.find((c) => /ประธาน/.test(c.role) && !/รอง/.test(c.role) && c.contact_url);
+  const buttons: { label: string; url: string }[] = [];
+  buttons.push({ label: `ทักประธาน${pres?.nickname ? ` ${pres.nickname}` : ""}`.slice(0, 20), url: pres?.contact_url || "https://line.me/ti/p/~pi_pe_2006" });
+  const roleRe: Record<string, RegExp> = { การเงิน: /การเงิน/, วิชาการ: /วิชาการ/, กิจกรรม: /กิจการ|กิจกรรม|พัฒนาคุณภาพ/ };
+  const re = roleRe[topic];
+  if (re) {
+    const c = committee.find((x) => re.test(x.role) && x.contact_url);
+    const fallback = ROUTING[topic]?.contacts?.[0];
+    const url = c?.contact_url || fallback?.profileUrl;
+    if (url && !buttons.some((b) => b.url === url)) buttons.push({ label: (c ? `ทัก${c.role.replace(/^ฝ่าย/, "ฝ่าย")} ${c.nickname}` : fallback!.buttonLabel).slice(0, 20), url });
+  }
+  for (const vp of committee.filter((x) => /รองประธาน/.test(x.role) && x.contact_url)) {
+    if (buttons.length >= 3) break;
+    buttons.push({ label: `รองฯ ${vp.nickname}`.slice(0, 20), url: vp.contact_url });
+  }
+  const note = ROUTING[topic]?.note;
+  return {
+    type: "flex",
+    altText: "ติดต่อประธานรุ่น / คนดูแล",
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box", layout: "vertical", backgroundColor: BLUE, paddingAll: "16px",
+        contents: [
+          { type: "text", text: "ขอส่งต่อให้คนดูแลรุ่นนะ 🙏", color: "#FFFFFF", weight: "bold", size: "md", wrap: true },
+          { type: "text", text: "เรื่องนี้ให้คนตอบจะชัวร์ที่สุด", color: "#DBEAFE", size: "xs", margin: "sm", wrap: true },
+        ],
+      },
+      body: {
+        type: "box", layout: "vertical", spacing: "sm",
+        contents: [
+          { type: "text", text: `ประธานรุ่น · ${pres?.nickname ?? "ไปร์ท"}`, weight: "bold", size: "lg", color: "#0F172A", wrap: true },
+          ...(note ? [{ type: "text", text: note, size: "sm", color: "#64748B", wrap: true, margin: "sm" } as messagingApi.FlexText] : []),
+        ],
+      },
+      footer: {
+        type: "box", layout: "vertical", spacing: "sm",
+        contents: buttons.slice(0, 4).map((b, i): messagingApi.FlexButton => ({
+          type: "button", style: i === 0 ? "primary" : "secondary", height: "sm", color: i === 0 ? BLUE : undefined,
+          action: { type: "uri", label: b.label, uri: b.url },
+        })),
+      },
+    },
+  };
+}

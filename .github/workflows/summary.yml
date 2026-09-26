@@ -1,17 +1,19 @@
-# สรุป/เตือน: เช็คเดดไลน์ใกล้ถึงทุกวัน + สร้างสรุปสัปดาห์ทุกวันอาทิตย์
-# ใช้ secret เดียวกับ broadcast (BROADCAST_URL ฐาน + BROADCAST_CRON_SECRET)
-# เวลา UTC: 01:00 UTC = 08:00 น. ไทย
+# งานอัตโนมัติของแอปสมาชิก (เวลา UTC):
+#   22:35 UTC = 05:35 น. ไทย -> ร่าง "สรุปวันนี้" บนแอป (mode=daily)
+#   01:00 UTC = 08:00 น. ไทย -> คิวเตือนเดดไลน์/สอบ/ผลสุ่ม เข้ากล่องรอตรวจ (mode=due)
+# (broadcast.yml ทุก 15 นาทีก็เรียกงานเหล่านี้ด้วย — ไฟล์นี้เป็นตัวสำรองให้ตรงเวลา)
+# ใช้ secret เดียวกับ broadcast (BROADCAST_URL + BROADCAST_CRON_SECRET)
 name: bm33-summary-cron
 
 on:
   schedule:
-    - cron: "0 1 * * *"    # ทุกวัน 08:00 ICT — เช็คเดดไลน์ใกล้ถึง
-    - cron: "0 2 * * 0"    # อาทิตย์ 09:00 ICT — สรุปสัปดาห์
+    - cron: "35 22 * * *"
+    - cron: "0 1 * * *"
   workflow_dispatch:
     inputs:
       mode:
-        description: "due หรือ weekly"
-        default: "weekly"
+        description: "daily หรือ due"
+        default: "daily"
 
 jobs:
   run:
@@ -20,11 +22,9 @@ jobs:
       - name: Trigger summary cron
         run: |
           MODE="due"
-          # cron ที่สอง(วันอาทิตย์) = weekly; workflow_dispatch ใช้ input
-          if [ "${{ github.event.schedule }}" = "0 2 * * 0" ]; then MODE="weekly"; fi
+          if [ "${{ github.event.schedule }}" = "35 22 * * *" ]; then MODE="daily"; fi
           if [ -n "${{ github.event.inputs.mode }}" ]; then MODE="${{ github.event.inputs.mode }}"; fi
           BASE="${{ secrets.BROADCAST_URL }}"
-          # แปลง .../api/broadcast-cron -> .../api/summary-cron
           URL="${BASE/broadcast-cron/summary-cron}?mode=$MODE"
           echo "calling $URL"
           code=$(curl -sS -o /tmp/out.txt -w "%{http_code}" -H "x-cron-secret: ${{ secrets.BROADCAST_CRON_SECRET }}" "$URL")

@@ -1,19 +1,16 @@
 // เครื่องมือสถานะ — ใครทำ/ยังไม่ทำ ต่อฟอร์ม โดย join บน student id
 // รวม 3 แหล่ง: (1) response sheet จริง (auto) (2) overlay BC_status (claimed/confirmed/manual)
-import { readTab, appendRecord, patchRecord, nowISO } from "@/lib/bc/sheets";
+import { readKey, readKeyFresh, appendRecord, patchRecord, nowISO } from "@/lib/bc/sheets";
 import { readForeignTable } from "@/lib/google-sheets";
-import { TABS, FormDef, Member, StatusOverlay, StatusState } from "@/lib/bc/types";
+import { cached } from "@/lib/cache";
+import { FormDef, Member, StatusOverlay, StatusState } from "@/lib/bc/types";
 import { verifiedMembers } from "@/lib/bc/members";
 
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 
-// อ่าน overlay ทั้งหมด (cache สั้น)
-let _ovCache: { rows: StatusOverlay[]; at: number } | null = null;
+// อ่าน overlay ทั้งหมด (snapshot แชร์; force = อ่านสด)
 export async function readOverlay(force = false): Promise<StatusOverlay[]> {
-  if (!force && _ovCache && Date.now() - _ovCache.at < 15_000) return _ovCache.rows;
-  const rows = await readTab<StatusOverlay>(TABS.status);
-  _ovCache = { rows, at: Date.now() };
-  return rows;
+  return force ? readKeyFresh<StatusOverlay>("status") : readKey<StatusOverlay>("status");
 }
 
 // อ่าน student id ที่ "ทำแล้ว" จาก response sheet จริง (เฉพาะ auto forms)
@@ -22,7 +19,9 @@ export async function autoDoneSet(form: FormDef): Promise<Set<string>> {
   if (form.access !== "auto" || !form.response_sheet_id || !form.response_tab) return done;
   let rows;
   try {
-    rows = await readForeignTable(form.response_sheet_id, form.response_tab);
+    // response sheet ภายนอก — cache 60 วิ แชร์ข้าม instance (กันยิงชีตทุกครั้งที่มีคนเปิดแอป)
+    rows = await cached(`form:${form.form_id}:${form.response_sheet_id}:${form.response_tab}`, ["forms-ext", `form:${form.form_id}`], 60,
+      () => readForeignTable(form.response_sheet_id, form.response_tab));
   } catch {
     return done; // อ่านไม่ได้ -> ถือว่าไม่มีใครทำ (จะ fallback ไป claim/manual)
   }
@@ -95,7 +94,6 @@ export async function setStatus(
   const rec = { student_id: studentId, form_id: formId, state, source, updated_at: nowISO(), note };
   if (existing?.__row) await patchRecord("status", existing.__row, existing as never, rec);
   else await appendRecord("status", rec);
-  _ovCache = null;
 }
 
 // สรุปนับ done/undone ของฟอร์ม
@@ -104,4 +102,22 @@ export async function summarize(form: FormDef): Promise<{ total: number; done: n
   const done = rows.filter((r) => r.state === "done").length;
   const claimed = rows.filter((r) => r.state === "claimed").length;
   return { total: rows.length, done, undone: rows.length - done, claimed };
+}
+
+// สถานะทุกฟอร์มของนักศึกษาคนเดียว (ใช้ในแอป + AI) — ไม่เปิดเผยของคนอื่น
+export async function formStatesFor(studentId: string): Promise<{ form: FormDef; state: StatusState }[]> {
+  const sid = digits(studentId);
+  const { readForms } = await import("@/lib/bc/forms");
+  const [forms, overlay] = await Promise.all([readForms(), readOverlay()]);
+  const out: { form: FormDef; state: StatusState }[] = [];
+  for (const form of forms) {
+    if (form.status === "closed") continue;
+    const done = await autoDoneSet(form);
+    const o = overlay.find((x) => digits(x.student_id) === sid && x.form_id === form.form_id);
+    let state: StatusState = "none";
+    if (done.has(sid) || o?.state === "confirmed" || o?.state === "done") state = "done";
+    else if (o?.state === "claimed") state = "claimed";
+    out.push({ form, state });
+  }
+  return out;
 }

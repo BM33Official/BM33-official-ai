@@ -10,19 +10,38 @@ export const TABS = {
   sendLog: "BC_send_log",
   exams: "BC_exams",
   summaries: "BC_summaries",
+  // ── v2: แอปสมาชิก + ระบบอัตโนมัติ ──
+  config: "BC_config",
+  committee: "BC_committee",
+  announcements: "BC_announcements",
+  daily: "BC_daily",
+  schedule: "BC_schedule",
+  uniExams: "BC_uni_exams",
+  uploads: "BC_uploads",
+  feeMonths: "BC_fee_months",
+  payments: "BC_payments",
+  draws: "BC_draws",
+  outbox: "BC_outbox",
+  fortunes: "BC_fortunes",
+  chatlog: "BC_chatlog", // บันทึกถาม-ตอบของบอท (แอดมินเท่านั้น; ไม่อยู่ใน snapshot)
 } as const;
+export type TabKey = keyof typeof TABS;
 
 // header (ลำดับคอลัมน์สำคัญ — โค้ดอ้างด้วยชื่อ ไม่ใช่ตำแหน่ง แต่ ensureTab ใช้ลำดับนี้)
-export const HEADERS: Record<keyof typeof TABS, string[]> = {
-  roster: ["student_id", "full_name", "nickname", "notes"],
+// กฎ: คอลัมน์ใหม่ต่อท้ายเสมอ เพื่อไม่ให้ข้อมูลเดิมเลื่อนตำแหน่ง
+export const HEADERS: Record<TabKey, string[]> = {
+  // BC_roster: ผู้ใช้กรอกเองด้วยหัวคอลัมน์ของตัวเอง -> ไม่บังคับ header (ดู lib/bc/roster.ts)
+  roster: [],
   members: [
     "line_user_id", "display_name", "claimed_name", "last3",
     "matched_student_id", "pending_student_id", "status",
     "onboarding_state", "onboarded_at", "updated_at",
+    "liff_user_id", "portal_confirmed_at", "last_seen_at",
   ],
   forms: [
     "form_id", "name", "type", "response_sheet_id", "response_tab",
     "id_column", "done_condition", "access", "created_at",
+    "deadline_at", "link", "description", "status",
   ],
   status: ["student_id", "form_id", "state", "source", "updated_at", "note"],
   broadcasts: [
@@ -33,13 +52,39 @@ export const HEADERS: Record<keyof typeof TABS, string[]> = {
     "image_url",
   ],
   sendLog: ["broadcast_id", "student_id", "line_user_id", "round", "sent_at"],
-  // คอลัมน์ใหม่ต่อท้าย created_at เสมอ เพื่อไม่ให้ข้อมูลเดิมเลื่อนตำแหน่ง
   exams: [
     "exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at",
     "doc_link", "doc_title", "not_filled_ids", "doc_reminder_at", "doc_reminder_status",
     "doc_reminder_template",
   ],
   summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at", "schedule_at"],
+
+  config: ["key", "value", "updated_at", "note"],
+  committee: ["student_id", "nickname", "role", "contact_url", "sort", "updated_at"],
+  announcements: [
+    "id", "title", "summary", "body", "author", "author_role", "category",
+    "deadline_at", "event_at", "location", "links", "source", "source_ref",
+    "status", "pinned", "created_at", "updated_at", "reminders", "form_id",
+  ],
+  daily: ["id", "date", "headline", "items", "status", "source", "created_at", "updated_at"],
+  schedule: [
+    "id", "block", "date", "start", "end", "subject", "topic", "lecturer",
+    "building", "room", "kind", "note", "status", "upload_id", "updated_at",
+  ],
+  uniExams: ["id", "name", "date", "start", "end", "building", "room", "block", "note", "status", "updated_at"],
+  uploads: ["id", "filename", "mime", "block", "status", "summary", "created_at", "note"],
+  feeMonths: ["month", "label", "amount", "due_date", "note", "updated_at"],
+  payments: ["student_id", "month", "amount", "kind", "paid_at", "recorded_by", "note", "updated_at"],
+  draws: [
+    "id", "activity", "need", "pool_ids", "selected_ids", "status",
+    "show_at", "reveal_at", "created_at", "note", "notified",
+  ],
+  outbox: [
+    "id", "kind", "ref_id", "title", "audience", "messages", "preview",
+    "status", "code", "created_at", "decided_at", "sent_at", "result", "expires_at",
+  ],
+  fortunes: ["student_id", "pulls", "collected", "streak", "last_day", "best", "pity", "updated_at"],
+  chatlog: ["ts", "channel", "student_id", "nickname", "question", "kind", "reply", "model", "ms", "tokens"],
 };
 
 export interface Exam {
@@ -73,6 +118,9 @@ export interface Member {
   onboarding_state: OnboardingState | "";
   onboarded_at: string;
   updated_at: string;
+  liff_user_id?: string; // userId จาก LIFF (อาจต่างจาก bot ถ้าอยู่คนละ provider)
+  portal_confirmed_at?: string;
+  last_seen_at?: string;
 }
 
 export interface RosterEntry {
@@ -81,6 +129,11 @@ export interface RosterEntry {
   full_name: string;
   nickname: string;
   notes: string;
+  prefix?: string;
+  name_en?: string;
+  nickname_en?: string;
+  line_id?: string;
+  instagram?: string;
 }
 
 export type FormAccess = "auto" | "manual";
@@ -95,6 +148,10 @@ export interface FormDef {
   done_condition: string; // "" = มีแถว = done | "col=value" = คอลัมน์นั้น = ค่านั้น
   access: FormAccess;
   created_at: string;
+  deadline_at?: string; // ISO — โชว์ในแอป + เตือนใกล้เดดไลน์
+  link?: string; // ลิงก์ฟอร์มให้สมาชิกกด
+  description?: string;
+  status?: string; // "" | open | closed
 }
 
 export type StatusState = "done" | "claimed" | "confirmed" | "none";
@@ -133,4 +190,171 @@ export interface Broadcast {
   created_at: string;
   sent_at: string;
   result_json: string;
+}
+
+// ── v2 ──────────────────────────────────────────────────────────────────────
+export interface LinkItem { label: string; url: string }
+
+export interface Announcement {
+  __row?: number;
+  id: string;
+  title: string;
+  summary: string; // สรุปสั้น 1-2 บรรทัด (AI หรือแอดมินเขียน)
+  body: string; // ข้อความต้นฉบับจากกรรมการ
+  author: string; // ชื่อเล่นผู้ประกาศ
+  author_role: string; // ตำแหน่ง เช่น ประธานรุ่น
+  category: string; // ทั่วไป | การเงิน | วิชาการ | กิจกรรม | ฟอร์ม | ด่วน
+  deadline_at: string; // ISO
+  event_at: string; // ISO (วันงาน/วันนัด)
+  location: string;
+  links: string; // JSON LinkItem[]
+  source: string; // group | forward | manual
+  source_ref: string; // message id
+  status: string; // live | hidden | draft | archived
+  pinned: string; // "1" | ""
+  created_at: string;
+  updated_at: string;
+  reminders: string; // JSON {"d3":iso,"d1":iso,"d0":iso} — รอบเตือนที่สร้างแล้ว
+  form_id: string; // ผูกกับฟอร์มที่ติดตาม (ถ้ามี)
+}
+
+export interface DailyItem {
+  emoji: string;
+  text: string;
+  at?: string; // ISO (ถ้ามีวันเวลา — แอปคำนวณ "อีกกี่วัน" สด)
+  ref?: string; // announcement id / form id
+  tone?: "urgent" | "normal" | "good";
+}
+export interface Daily {
+  __row?: number;
+  id: string;
+  date: string; // YYYY-MM-DD (เวลาไทย)
+  headline: string;
+  items: string; // JSON DailyItem[]
+  status: string; // live | hidden | draft
+  source: string; // ai | edited
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleItem {
+  __row?: number;
+  id: string;
+  block: string;
+  date: string; // YYYY-MM-DD
+  start: string; // HH:mm
+  end: string;
+  subject: string;
+  topic: string;
+  lecturer: string;
+  building: string;
+  room: string;
+  kind: string; // lecture | lab | exam | activity | other
+  note: string;
+  status: string; // live | draft | hidden
+  upload_id: string;
+  updated_at: string;
+}
+
+export interface UniExam {
+  __row?: number;
+  id: string;
+  name: string;
+  date: string; // YYYY-MM-DD
+  start: string;
+  end: string;
+  building: string;
+  room: string;
+  block: string;
+  note: string;
+  status: string; // live | draft | hidden
+  updated_at: string;
+}
+
+export interface UploadRec {
+  __row?: number;
+  id: string;
+  filename: string;
+  mime: string;
+  block: string;
+  status: string; // parsed | published | failed
+  summary: string;
+  created_at: string;
+  note: string;
+}
+
+export interface FeeMonth {
+  __row?: number;
+  month: string; // YYYY-MM
+  label: string;
+  amount: string;
+  due_date: string; // YYYY-MM-DD
+  note: string;
+  updated_at: string;
+}
+export interface Payment {
+  __row?: number;
+  student_id: string;
+  month: string; // YYYY-MM
+  amount: string;
+  kind: string; // monthly | yearly | waived | partial
+  paid_at: string;
+  recorded_by: string;
+  note: string;
+  updated_at: string;
+}
+
+export interface Draw {
+  __row?: number;
+  id: string;
+  activity: string;
+  need: string;
+  pool_ids: string; // comma student ids
+  selected_ids: string; // comma student ids (ลับ — ไม่ส่งให้ client ยกเว้นของตัวเอง)
+  status: string; // scheduled | revealed | canceled
+  show_at: string; // ISO เวลาที่หน้าต่างสุ่มเด้งขึ้นในแอป
+  reveal_at: string; // ISO เวลาประกาศผล (เฉพาะตัว)
+  created_at: string;
+  note: string;
+  notified: string; // "" | queued | sent
+}
+
+export interface OutboxItem {
+  __row?: number;
+  id: string;
+  kind: string; // deadline | summary | broadcast | draw | announcement
+  ref_id: string;
+  title: string;
+  audience: string; // all | undone:<formId> | ids:<comma> | admins
+  messages: string; // JSON LINE messages
+  preview: string; // ข้อความตัวอย่างสำหรับแอดมิน
+  status: string; // pending | approved | sent | rejected | expired | failed
+  code: string; // เลขสั้นสำหรับพิมพ์ approve <code>
+  created_at: string;
+  decided_at: string;
+  sent_at: string;
+  result: string;
+  expires_at: string;
+}
+
+export interface FortuneRec {
+  __row?: number;
+  student_id: string;
+  pulls: string;
+  collected: string; // base64url bitset ของ 200 ใบ
+  streak: string;
+  last_day: string; // YYYY-MM-DD
+  best: string; // tier สูงสุดที่เคยได้
+  pity: string;
+  updated_at: string;
+}
+
+export interface CommitteeRec {
+  __row?: number;
+  student_id: string;
+  nickname: string;
+  role: string;
+  contact_url: string;
+  sort: string;
+  updated_at: string;
 }

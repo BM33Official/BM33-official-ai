@@ -1,8 +1,8 @@
 import { requireAdmin } from "@/lib/bc/auth";
-import { ensureBcTabs } from "@/lib/bc/sheets";
 import { readForms } from "@/lib/bc/forms";
 import { readBroadcasts } from "@/lib/bc/broadcast";
 import Composer from "../ui/Composer";
+import PageHead from "../ui/PageHead";
 import RowActions from "../ui/RowActions";
 import { bkkDateTime } from "@/lib/bc/format";
 
@@ -19,8 +19,7 @@ const STATUS_TH: Record<string, string> = {
 };
 
 export default async function Broadcasts({ searchParams }: { searchParams: { edit?: string } }) {
-  requireAdmin();
-  await ensureBcTabs();
+  await requireAdmin();
   const [forms, broadcasts] = await Promise.all([readForms(), readBroadcasts()]);
   const formOpts = forms.map((f) => ({ form_id: f.form_id, name: f.name }));
   const queue = [...broadcasts].reverse();
@@ -28,8 +27,8 @@ export default async function Broadcasts({ searchParams }: { searchParams: { edi
 
   return (
     <div className="wrap">
-      <h1>บรอดแคสต์</h1>
-      <p className="sub">เขียน → พรีวิว → อนุมัติ → ส่ง (เริ่มด้วยโหมดทดสอบก่อนเสมอ)</p>
+      <PageHead icon="📨" title="บรอดแคสต์" desc="ส่งข้อความ LINE ถึงทุกคน หรือเฉพาะคนที่ยังไม่ทำฟอร์ม — ข้อความทั่วไปควรลงเป็น “ประกาศ” บนแอปแทน (ไม่กินโควตา)"
+        steps={["เขียนข้อความ + ดูพรีวิว", "ทดสอบส่งหาตัวเองก่อน", "อนุมัติ → ส่งทันที/ตั้งเวลา"]} />
 
       <Composer forms={formOpts} initial={editing} />
 

@@ -3,7 +3,8 @@
 import { NextResponse } from "next/server";
 import { ensureBcTabs } from "@/lib/bc/sheets";
 import { adminLineIds } from "@/lib/bc/auth";
-import { checkDueDates, generateWeeklySummary } from "@/lib/bc/summary";
+import { runAppAutomation } from "@/lib/bc/cron";
+import { generateDaily } from "@/lib/bc/daily";
 import { log } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -23,13 +24,13 @@ async function handle(req: Request) {
   const mode = new URL(req.url).searchParams.get("mode") ?? "due";
   try {
     await ensureBcTabs();
-    if (mode === "weekly") {
-      const s = await generateWeeklySummary();
-      const due = await checkDueDates(adminLineIds());
-      return NextResponse.json({ ok: true, mode, summaryId: s.id, dueCreated: due });
+    // v2: สรุปประจำวันบนแอป + คิวเตือนเดดไลน์ (แทนสรุปสัปดาห์/เตือนแบบเดิม)
+    if (mode === "daily") {
+      const r = await generateDaily({ force: new URL(req.url).searchParams.get("force") === "1" });
+      return NextResponse.json({ ok: true, mode, ...r });
     }
-    const due = await checkDueDates(adminLineIds());
-    return NextResponse.json({ ok: true, mode, dueCreated: due });
+    const r = await runAppAutomation();
+    return NextResponse.json({ ok: true, mode, ...r, admins: adminLineIds().length });
   } catch (err) {
     log.error("summary_cron_failed", { message: String(err) });
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 });

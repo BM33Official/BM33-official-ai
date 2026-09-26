@@ -6,9 +6,9 @@ export const metadata = { title: "BM33 Control Center" };
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <div>
+    <div className="cc-shell">
       <NavBar />
-      {children}
+      <main className="cc-main">{children}</main>
     </div>
   );
 }

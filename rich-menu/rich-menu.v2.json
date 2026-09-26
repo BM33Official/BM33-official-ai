@@ -1,0 +1,14 @@
+{
+  "size": { "width": 2500, "height": 1686 },
+  "selected": true,
+  "name": "BM33 App Menu v2",
+  "chatBarText": "เมนู BM33",
+  "areas": [
+    { "bounds": { "x": 0, "y": 0, "width": 833, "height": 843 }, "action": { "type": "uri", "label": "หน้าหลัก", "uri": "https://liff.line.me/2011755768-aSlCqo7l?tab=home" } },
+    { "bounds": { "x": 833, "y": 0, "width": 834, "height": 843 }, "action": { "type": "uri", "label": "ประกาศ & งาน", "uri": "https://liff.line.me/2011755768-aSlCqo7l?tab=news" } },
+    { "bounds": { "x": 1667, "y": 0, "width": 833, "height": 843 }, "action": { "type": "uri", "label": "ตารางเรียน", "uri": "https://liff.line.me/2011755768-aSlCqo7l?tab=schedule" } },
+    { "bounds": { "x": 0, "y": 843, "width": 833, "height": 843 }, "action": { "type": "uri", "label": "ของฉัน", "uri": "https://liff.line.me/2011755768-aSlCqo7l?tab=me" } },
+    { "bounds": { "x": 833, "y": 843, "width": 834, "height": 843 }, "action": { "type": "uri", "label": "เซียมซี", "uri": "https://liff.line.me/2011755768-aSlCqo7l?tab=fortune" } },
+    { "bounds": { "x": 1667, "y": 843, "width": 833, "height": 843 }, "action": { "type": "postback", "label": "ถามบอท", "data": "menu:ask", "displayText": "ถามบอท" } }
+  ]
+}

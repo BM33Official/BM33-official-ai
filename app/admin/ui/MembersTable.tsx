@@ -8,13 +8,15 @@ export type MemberRow = {
   line_name: string;
   state: "verified" | "onboarding" | "mismatch" | "missing";
   onboarded_at: string;
+  app?: string;
+  last_seen?: string;
 };
 
 const FILTERS = [
   { key: "all", label: "ทั้งหมด" },
   { key: "verified", label: "ยืนยันแล้ว" },
   { key: "onboarding", label: "กำลังลงทะเบียน" },
-  { key: "missing", label: "ยังไม่แอดบอท" },
+  { key: "missing", label: "ยังไม่ลงทะเบียน" },
 ] as const;
 type FilterKey = (typeof FILTERS)[number]["key"];
 
@@ -22,7 +24,7 @@ function badge(state: MemberRow["state"]) {
   if (state === "verified") return <span className="badge b-ok">ยืนยันแล้ว</span>;
   if (state === "mismatch") return <span className="badge b-danger">ข้อมูลไม่ตรง</span>;
   if (state === "onboarding") return <span className="badge b-warn">กำลังลงทะเบียน</span>;
-  return <span className="badge b-muted">ยังไม่แอดบอท</span>;
+  return <span className="badge b-muted">ยังไม่ลงทะเบียน</span>;
 }
 
 export default function MembersTable({ rows, total, verified, onboarding, missing }: {
@@ -77,6 +79,8 @@ export default function MembersTable({ rows, total, verified, onboarding, missin
                 <th>ชื่อเล่น</th>
                 <th>ชื่อ LINE</th>
                 <th>สถานะ</th>
+                <th>แอป BM33</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +91,8 @@ export default function MembersTable({ rows, total, verified, onboarding, missin
                   <td>{m.nickname || "-"}</td>
                   <td>{m.line_name || <span className="hint">— ยังไม่แอด —</span>}</td>
                   <td>{badge(m.state)}</td>
+                  <td>{m.app ? <span className="badge b-blue">เปิดแล้ว{m.last_seen ? ` · ${m.last_seen.slice(5, 10)}` : ""}</span> : <span className="hint">—</span>}</td>
+                  <td>{m.student_id && <a className="btn-sm btn" href={`/app?preview=${m.student_id}`} target="_blank" rel="noreferrer">ดูแอปของคนนี้</a>}</td>
                 </tr>
               ))}
             </tbody>

@@ -1,6 +1,6 @@
-// ล็อกอิน control center — เทียบรหัสผ่าน (แอดมิน/วิชาการ) แล้วตั้ง cookie ตาม role
+// ล็อกอิน control center — เทียบรหัสผ่านกับทุกบทบาท (แอดมิน/วิชาการ/การเงิน) แล้วตั้ง cookie ตาม role
 import { NextResponse } from "next/server";
-import { tokenForPassword, SESSION_COOKIE } from "@/lib/bc/auth";
+import { tokenForPassword, SESSION_COOKIE, ROLE_HOME } from "@/lib/bc/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,12 +10,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "ยังไม่ได้ตั้ง ADMIN_PANEL_PASSWORD" }, { status: 500 });
   }
   const body = (await req.json().catch(() => ({}))) as { password?: string };
-  const match = tokenForPassword(body.password ?? "");
+  const match = await tokenForPassword((body.password ?? "").trim());
   if (!match) {
     return NextResponse.json({ ok: false, error: "รหัสผ่านไม่ถูกต้อง" }, { status: 401 });
   }
-  // ฝ่ายวิชาการเข้าแท็บวิชาการโดยตรง, แอดมินเข้าแดชบอร์ด
-  const res = NextResponse.json({ ok: true, role: match.role, redirect: match.role === "academic" ? "/admin/academic" : "/admin" });
+  const res = NextResponse.json({ ok: true, role: match.role, redirect: ROLE_HOME[match.role] });
   res.cookies.set(SESSION_COOKIE, match.token, {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 30,
   });

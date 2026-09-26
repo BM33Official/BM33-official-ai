@@ -5,7 +5,7 @@
   "installCommand": "npm install",
   "functions": {
     "app/api/line-webhook/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 60
     },
     "app/api/learn/route.ts": {
       "maxDuration": 60

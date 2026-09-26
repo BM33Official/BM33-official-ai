@@ -8,6 +8,11 @@ import {
 import { Broadcast } from "@/lib/bc/types";
 import { runDueDocReminders } from "@/lib/bc/academic";
 import { runDueSummaries } from "@/lib/bc/summary";
+import { runReminderCron } from "@/lib/bc/reminders";
+import { generateDaily } from "@/lib/bc/daily";
+import { readDraws, drawPhase, markDrawNotified, drawIds } from "@/lib/bc/draws";
+import { createOutbox, reminderMessages } from "@/lib/bc/outbox";
+import { bkkParts } from "@/lib/time";
 import { log } from "@/lib/logger";
 
 const DAY = 86_400_000;
@@ -22,7 +27,37 @@ function cloneContent(b: Broadcast): Partial<Broadcast> {
   };
 }
 
-export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number; queued: number; done: number; docReminders: number; summaries: number }> {
+// งานอัตโนมัติของแอปสมาชิก: สรุปประจำวัน (ตั้งแต่ 05:30 น.) + คิวเตือนเดดไลน์ + แจ้งผลสุ่ม (ทั้งหมดผ่านการอนุมัติ)
+export async function runAppAutomation(now = Date.now()): Promise<{ daily: string; reminders: number; draws: number }> {
+  let daily = "", reminders = 0, draws = 0;
+  const p = bkkParts(now);
+  if (p.hh > 5 || (p.hh === 5 && p.mm >= 30)) {
+    try { const r = await generateDaily(); daily = r.skipped ?? r.id; } catch (err) { log.warn("daily_cron_failed", { message: String(err).slice(0, 200) }); }
+  }
+  try { reminders = await runReminderCron(now); } catch (err) { log.warn("reminder_cron_failed", { message: String(err).slice(0, 200) }); }
+  try {
+    for (const d of await readDraws(true)) {
+      if (d.notified || drawPhase(d, now) !== "revealed") continue;
+      if (now - new Date(d.reveal_at).getTime() > 3 * 86_400_000) continue;
+      const pool = drawIds(d.pool_ids), sel = drawIds(d.selected_ids);
+      const rest = pool.filter((x) => !sel.includes(x));
+      const app = "https://liff.line.me/2011755768-aSlCqo7l?tab=me";
+      if (sel.length) {
+        const text = `🎯 ผลการสุ่มกิจกรรม "${d.activity}"\n\nคุณได้รับเลือกให้ร่วมกิจกรรมนี้นะ ขอบคุณที่ช่วยรุ่น 💙\nรายละเอียดเพิ่มเติมฝ่ายวิชาการจะแจ้งอีกครั้ง\n\n(ข้อความนี้ส่งถึงเฉพาะคุณ)`;
+        await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:selected`, title: `แจ้งผู้ถูกเลือก: ${d.activity} (${sel.length} คน)`, audience: `ids:${sel.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text });
+      }
+      if (rest.length) {
+        const text = `🍀 ผลการสุ่มกิจกรรม "${d.activity}"\n\nรอบนี้คุณไม่ได้ถูกเลือกนะ แต่อย่าลืมทยอยจำข้อสอบให้ครบน้า 📘\n\n(ข้อความนี้ส่งถึงเฉพาะคุณ)`;
+        await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:rest`, title: `แจ้งผู้ไม่ถูกเลือก: ${d.activity} (${rest.length} คน)`, audience: `ids:${rest.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text });
+      }
+      await markDrawNotified(d.id, "queued");
+      draws++;
+    }
+  } catch (err) { log.warn("draw_cron_failed", { message: String(err).slice(0, 200) }); }
+  return { daily, reminders, draws };
+}
+
+export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number; queued: number; done: number; docReminders: number; summaries: number; app?: unknown }> {
   await ensureBcTabs();
   const admin = adminLineIds();
   const list = await readBroadcasts();
@@ -71,8 +106,9 @@ export async function runBroadcastCron(now = Date.now()): Promise<{ sent: number
   try { docReminders = await runDueDocReminders(admin, now); } catch (err) { log.warn("due_doc_reminders_failed", { message: String(err) }); }
   try { summaries = await runDueSummaries(admin, now); } catch (err) { log.warn("due_summaries_failed", { message: String(err) }); }
 
+  const app = await runAppAutomation(now).catch((err) => ({ error: String(err).slice(0, 200) }));
   log.info("broadcast_cron", { sent, queued, done, docReminders, summaries });
-  return { sent, queued, done, docReminders, summaries };
+  return { sent, queued, done, docReminders, summaries, app };
 }
 
 function safeJSON(s: string): Record<string, unknown> {

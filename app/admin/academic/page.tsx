@@ -1,6 +1,9 @@
-import { requireAuth } from "@/lib/bc/auth";
-import { ensureBcTabs } from "@/lib/bc/sheets";
-import { readExams, ranking, RED_ZONE_SIZE } from "@/lib/bc/academic";
+import { requireRole } from "@/lib/bc/auth";
+import { readExams, ranking } from "@/lib/bc/academic";
+import { readDraws, drawPhase, drawIds } from "@/lib/bc/draws";
+import DrawPanel from "../ui/DrawPanel";
+import PageHead from "../ui/PageHead";
+import { thDateTime } from "@/lib/time";
 import { readRoster } from "@/lib/bc/roster";
 import ExamCreate from "../ui/ExamCreate";
 import ExamActions from "../ui/ExamActions";
@@ -15,9 +18,14 @@ export const dynamic = "force-dynamic";
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 
 export default async function Academic({ searchParams }: { searchParams: { exam?: string } }) {
-  requireAuth();
-  await ensureBcTabs();
-  const [exams, rank, roster] = await Promise.all([readExams(), ranking(), readRoster()]);
+  await requireRole("academic");
+  const [exams, rank, roster, draws] = await Promise.all([readExams(), ranking(), readRoster(), readDraws(true)]);
+  const RED_ZONE_SIZE = rank.size;
+  const drawRows = [...draws].reverse().slice(0, 12).map((d) => ({
+    id: d.id, activity: d.activity, need: Number(d.need) || 0, pool: drawIds(d.pool_ids), selected: drawIds(d.selected_ids),
+    status: d.status, phase: drawPhase(d), show: thDateTime(d.show_at), reveal: thDateTime(d.reveal_at), notified: d.notified,
+  }));
+  const people = rank.rows.map((r) => ({ sid: r.student_id, nickname: r.nickname, level: r.level, misses: r.misses }));
   const selected = searchParams?.exam ? exams.find((e) => e.exam_id === searchParams.exam) : undefined;
   const rows = roster.map((r) => ({ student_id: digits(r.student_id), nickname: r.nickname || r.full_name || digits(r.student_id), name: r.full_name || "" }));
   const initial = selected ? String(selected.not_memorized_ids ?? "").split(",").map(digits).filter(Boolean) : [];
@@ -29,8 +37,8 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
 
   return (
     <div className="wrap">
-      <h1>วิชาการ — ติดตามการจำข้อสอบ</h1>
-      <p className="sub">สร้างข้อสอบ → ติ๊กคนที่ยังไม่ได้จำ → ระบบจัดอันดับ &amp; แจ้งเตือนอัตโนมัติ (red zone {RED_ZONE_SIZE} คน)</p>
+      <PageHead icon="📘" title="วิชาการ & Red Zone" desc={`ติดตามการจำข้อสอบของทั้งรุ่น — Red Zone คิดแบบสะสมทุกข้อสอบ (ข้อสอบล่าสุดมีน้ำหนักมากกว่า) · ${RED_ZONE_SIZE} อันดับแรก = Red Zone · สมาชิกเห็นเฉพาะสถานะของตัวเองในแอป`}
+        steps={["สร้างข้อสอบ", "ติ๊กคนที่ยังไม่ได้จำ", "ดูอันดับ / ส่งข้อความ / สุ่มผู้เข้าร่วม"]} />
 
       <div className="grid g2" style={{ marginBottom: 18 }}>
         <ExamCreate />
@@ -74,10 +82,13 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
         </div>
       )}
 
-      <h2>อันดับการจำข้อสอบ (คนพลาดมากอยู่บน)</h2>
+      <h2>🎲 สุ่มผู้เข้าร่วมกิจกรรม</h2>
+      <DrawPanel people={people} draws={drawRows} />
+
+      <h2>อันดับการจำข้อสอบ (คะแนนสะสม — มากอยู่บน)</h2>
       <div className="card tablecard">
         <table>
-          <thead><tr><th>#</th><th>ชื่อเล่น</th><th>รหัส</th><th>พลาด (ครั้ง)</th><th>ข้อสอบที่พลาด</th><th>สถานะ</th></tr></thead>
+          <thead><tr><th>#</th><th>ชื่อเล่น</th><th>รหัส</th><th>พลาด (ครั้ง)</th><th>คะแนนสะสม</th><th>ข้อสอบที่พลาด</th><th>สถานะ</th></tr></thead>
           <tbody>
             {rank.rows.filter((r) => r.misses > 0).map((r, i) => (
               <tr key={r.student_id} style={r.redzone ? { background: "#fff1f1" } : undefined}>
@@ -85,12 +96,13 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
                 <td><b>{r.nickname}</b>{!r.lineUserId && <span className="badge b-muted" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</td>
                 <td className="hint">{r.student_id}</td>
                 <td>{r.misses}</td>
+                <td>{r.score}</td>
                 <td className="hint">{r.missedExams.join(", ")}</td>
-                <td>{r.redzone ? <span className="badge b-danger">RED ZONE</span> : <span className="hint">ห่าง red zone {r.distanceToRed}</span>}</td>
+                <td>{r.level === "red" ? <span className="badge b-danger">RED ZONE</span> : r.level === "close" ? <span className="badge b-warn">ใกล้ Red Zone</span> : <span className="badge b-muted">เฝ้าระวัง</span>}</td>
               </tr>
             ))}
             {rank.rows.filter((r) => r.misses > 0).length === 0 && (
-              <tr><td colSpan={6} className="sub">ยังไม่มีใครถูกทำเครื่องหมาย</td></tr>
+              <tr><td colSpan={7} className="sub">ยังไม่มีใครถูกทำเครื่องหมาย</td></tr>
             )}
           </tbody>
         </table>

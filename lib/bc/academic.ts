@@ -1,28 +1,23 @@
-// ระบบวิชาการ — ติดตามการจำข้อสอบ + จัดอันดับ red zone + ประกาศเฉพาะกลุ่ม
-import { readTab, appendRecord, patchRecord, nowISO } from "@/lib/bc/sheets";
+// ระบบวิชาการ — ติดตามการจำข้อสอบ + จัดอันดับ red zone (สะสม) + ประกาศเฉพาะกลุ่ม
+import { readKey, readKeyFresh, appendRecord, patchRecord, nowISO } from "@/lib/bc/sheets";
 import { deleteRow } from "@/lib/google-sheets";
 import { TABS, Exam } from "@/lib/bc/types";
 import { verifiedMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
+import { redZoneSize } from "@/lib/bc/config";
 import { pushTo } from "@/lib/line";
+import { bust } from "@/lib/cache";
 
-export const RED_ZONE_SIZE = 6;
+export const RED_ZONE_SIZE = 6; // ค่าเริ่มต้น — ค่าจริงอ่านจาก BC_config (red_zone_size)
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 const idList = (s: string) => String(s ?? "").split(",").map((x) => digits(x)).filter(Boolean);
 
-// cache สั้น ๆ — หน้า academic อ่าน exams หลายรอบต่อ render (ผ่าน ranking ด้วย)
-// รวบให้เหลือ read เดียว กันชน rate-limit ของ Sheets ตอนกดติ๊กถี่ ๆ
-let _examCache: { rows: Exam[]; at: number } | null = null;
-function invalidateExams() { _examCache = null; }
-
-export async function readExams(): Promise<Exam[]> {
-  if (_examCache && Date.now() - _examCache.at < 8_000) return _examCache.rows;
-  const rows = await readTab<Exam>(TABS.exams);
-  _examCache = { rows, at: Date.now() };
-  return rows;
+// อ่านผ่าน snapshot (cache แชร์ข้าม instance) -> หน้าวิชาการไม่ยิงชีตซ้ำอีกต่อไป
+export async function readExams(force = false): Promise<Exam[]> {
+  return force ? readKeyFresh<Exam>("exams") : readKey<Exam>("exams");
 }
-export async function getExam(examId: string): Promise<Exam | null> {
-  return (await readExams()).find((e) => e.exam_id === examId) ?? null;
+export async function getExam(examId: string, force = false): Promise<Exam | null> {
+  return (await readExams(force)).find((e) => e.exam_id === examId) ?? null;
 }
 export async function addExam(input: {
   name: string; exam_date?: string; question_count?: string; doc_link?: string; doc_title?: string;
@@ -42,45 +37,43 @@ export async function addExam(input: {
     doc_reminder_status: "",
     doc_reminder_template: "",
   });
-  invalidateExams();
   return exam_id;
 }
-// ยกเลิก/ลบข้อสอบ (ลบแถวจริงออกจากชีต)
+// ยกเลิก/ลบข้อสอบ (ลบแถวจริงออกจากชีต — อ่านสดก่อนเพื่อได้เลขแถวที่ถูก)
 export async function deleteExam(examId: string): Promise<boolean> {
-  const e = await getExam(examId);
+  const e = await getExam(examId, true);
   if (!e?.__row) return false;
   await deleteRow(TABS.exams, e.__row);
-  invalidateExams();
+  bust("bc");
   return true;
 }
 // บันทึกชุด student_id ที่ "ยังไม่ได้จำ" ของข้อสอบนี้
 export async function setNotMemorized(examId: string, studentIds: string[]): Promise<void> {
-  const e = await getExam(examId);
+  const e = await getExam(examId, true);
   if (!e?.__row) return;
   const clean = Array.from(new Set(studentIds.map(digits).filter(Boolean)));
   await patchRecord("exams", e.__row, e as never, { not_memorized_ids: clean.join(",") });
-  invalidateExams();
 }
 // บันทึกชุด student_id ที่ "ยังไม่กรอกเอกสาร" ของข้อสอบนี้ (ติ๊กเองหลังตรวจเอกสาร)
 export async function setNotFilled(examId: string, studentIds: string[]): Promise<void> {
-  const e = await getExam(examId);
+  const e = await getExam(examId, true);
   if (!e?.__row) return;
   const clean = Array.from(new Set(studentIds.map(digits).filter(Boolean)));
   await patchRecord("exams", e.__row, e as never, { not_filled_ids: clean.join(",") });
-  invalidateExams();
 }
 // ตั้งเวลาส่งเตือนกรอกเอกสารอัตโนมัติ (atISO ว่าง = ยกเลิก); template = ข้อความที่แก้ไว้
 export async function scheduleDocReminder(examId: string, atISO: string, template = ""): Promise<boolean> {
-  const e = await getExam(examId);
+  const e = await getExam(examId, true);
   if (!e?.__row || !e.doc_link) return false;
   await patchRecord("exams", e.__row, e as never, {
     doc_reminder_at: atISO,
     doc_reminder_status: atISO ? "pending" : "",
     doc_reminder_template: atISO ? template : "",
   });
-  invalidateExams();
   return true;
 }
+
+export type ZoneLevel = "red" | "close" | "watch" | "safe";
 
 export interface RankRow {
   student_id: string;
@@ -88,32 +81,60 @@ export interface RankRow {
   lineUserId: string; // "" = ยังไม่ได้ลงทะเบียน (ส่งข้อความไม่ได้)
   misses: number;
   missedExams: string[];
+  score: number; // คะแนนสะสม (ข้อสอบล่าสุดมีน้ำหนักมากกว่า)
+  level: ZoneLevel;
   redzone: boolean;
   distanceToRed: number;
 }
 
+// น้ำหนักตามความใหม่: ข้อสอบล่าสุด = 1, ก่อนหน้า = 0.85, 0.72, ... (ไม่ต่ำกว่า 0.35)
+export const RECENCY_DECAY = 0.85;
+
+function examOrder(exams: Exam[]): Exam[] {
+  const t = (e: Exam) => new Date(e.exam_date || e.created_at || 0).getTime() || 0;
+  return [...exams].sort((a, b) => t(b) - t(a)); // ใหม่ -> เก่า
+}
+
 // จัดอันดับจากทะเบียนทั้งรุ่น (ไม่ใช่แค่คนที่ลงทะเบียน) เพื่อให้ red zone ถูกต้อง
-export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number }> {
-  const [roster, members, exams] = await Promise.all([readRoster(), verifiedMembers(), readExams()]);
+// red zone = N อันดับแรกของคะแนนสะสม (N จาก BC_config.red_zone_size)
+export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number }> {
+  const [roster, members, exams, size] = await Promise.all([readRoster(), verifiedMembers(), readExams(), redZoneSize()]);
   const lineById = new Map(members.map((m) => [digits(m.matched_student_id), m.line_user_id]));
+  const ordered = examOrder(exams);
+  const weight = new Map(ordered.map((e, i) => [e.exam_id, Math.max(0.35, RECENCY_DECAY ** i)]));
 
   const base = roster.map((r) => {
     const sid = digits(r.student_id);
-    const missedExams = exams.filter((e) => idList(e.not_memorized_ids).includes(sid)).map((e) => e.name);
-    return { student_id: sid, nickname: r.nickname || r.full_name || sid, lineUserId: lineById.get(sid) || "", misses: missedExams.length, missedExams };
+    const missed = ordered.filter((e) => idList(e.not_memorized_ids).includes(sid));
+    const score = Math.round(missed.reduce((a, e) => a + (weight.get(e.exam_id) ?? 1), 0) * 100) / 100;
+    return {
+      student_id: sid, nickname: r.nickname || r.full_name || sid, lineUserId: lineById.get(sid) || "",
+      misses: missed.length, missedExams: missed.map((e) => e.name), score,
+    };
   });
 
-  const sorted = [...base].sort((a, b) => b.misses - a.misses);
-  const withMiss = sorted.filter((r) => r.misses > 0);
-  const redSet = new Set(withMiss.slice(0, RED_ZONE_SIZE).map((r) => r.student_id));
-  const redzoneMin = withMiss.length >= RED_ZONE_SIZE ? withMiss[RED_ZONE_SIZE - 1].misses : (withMiss.at(-1)?.misses ?? 1);
+  const sorted = [...base].sort((a, b) => b.score - a.score || b.misses - a.misses);
+  const withMiss = sorted.filter((r) => r.score > 0);
+  const red = withMiss.slice(0, size);
+  // เสมอกันที่เส้นตัด -> รวมเข้า red zone ทั้งหมด (ยุติธรรม ไม่ตัดตามลำดับตัวอักษร)
+  const threshold = red.at(-1)?.score ?? 0;
+  const redSet = new Set(threshold > 0 ? withMiss.filter((r) => r.score >= threshold).map((r) => r.student_id) : []);
+  const redzoneMin = red.length >= size ? red[red.length - 1].misses : (red.at(-1)?.misses ?? 1);
 
-  const rows: RankRow[] = sorted.map((r) => ({
-    ...r,
-    redzone: redSet.has(r.student_id),
-    distanceToRed: Math.max(0, redzoneMin - r.misses + (redSet.has(r.student_id) ? 0 : 1)),
-  }));
-  return { rows, redzoneMin };
+  const rows: RankRow[] = sorted.map((r, i) => {
+    const inRed = redSet.has(r.student_id);
+    let level: ZoneLevel = "safe";
+    if (inRed) level = "red";
+    else if (r.score > 0 && (i < size * 2 || (threshold > 0 && r.score >= threshold * 0.6))) level = "close";
+    else if (r.score > 0) level = "watch";
+    return {
+      ...r,
+      level,
+      redzone: inRed,
+      distanceToRed: inRed ? 0 : Math.max(1, redzoneMin - r.misses + 1),
+    };
+  });
+  return { rows, redzoneMin, size, threshold };
 }
 
 export type AcademicMode = "unmemorized" | "redzone" | "rest" | "doc" | "doc_unfilled";
@@ -132,13 +153,13 @@ export const DEFAULT_TEMPLATES: Record<AcademicMode, string> = {
 };
 
 // แทน token ในเทมเพลตด้วยข้อมูลจริงของผู้รับ
-function fillTokens(tpl: string, r: RankRow): string {
+function fillTokens(tpl: string, r: RankRow, size = RED_ZONE_SIZE): string {
   return tpl
     .replace(/\{ชื่อเล่น\}/g, r.nickname)
     .replace(/\{จำนวน\}/g, String(r.misses))
     .replace(/\{ข้อสอบ\}/g, r.missedExams.map((n) => `• ${n}`).join("\n"))
     .replace(/\{ระยะห่าง\}/g, String(r.distanceToRed))
-    .replace(/\{จำนวนโซน\}/g, String(RED_ZONE_SIZE));
+    .replace(/\{จำนวนโซน\}/g, String(size));
 }
 // ต่อลิงก์ท้ายข้อความ (ถ้าฝ่ายวิชาการใส่มา และยังไม่มีในข้อความ)
 function appendLink(msg: string, link?: string): string {
@@ -147,13 +168,13 @@ function appendLink(msg: string, link?: string): string {
   return `${msg}\n\n${l}`;
 }
 
-function messageFor(mode: AcademicMode, r: RankRow, opts?: AcademicOpts): string | null {
+function messageFor(mode: AcademicMode, r: RankRow, opts?: AcademicOpts, size = RED_ZONE_SIZE): string | null {
   if (mode === "redzone" && !r.redzone) return null;
   if (mode === "rest" && (r.redzone || r.misses === 0)) return null;
   if (mode === "unmemorized" && r.misses === 0) return null;
   if (!["redzone", "rest", "unmemorized"].includes(mode)) return null;
   const tpl = opts?.template?.trim() || DEFAULT_TEMPLATES[mode];
-  return appendLink(fillTokens(tpl, r) + (opts?.template ? "" : REMARK), opts?.link);
+  return appendLink(fillTokens(tpl, r, size) + (opts?.template ? "" : REMARK), opts?.link);
 }
 
 // ── preview: นับผู้รับ + ตัวอย่างข้อความ (ไม่ส่งจริง) ─────────────────────────
@@ -186,9 +207,9 @@ export async function academicPreview(mode: AcademicMode, exam?: Exam | null, op
     const audience = AUDIENCE_LABEL.doc_unfilled + (notReg > 0 ? ` (อีก ${notReg} คนยังไม่ลงทะเบียน จึงส่งไม่ได้)` : "");
     return { count: recips.length, sample: docMessage(exam, true, opts), audience };
   }
-  const { rows } = await ranking();
-  const targets = rows.map((r) => ({ r, msg: messageFor(mode, r, opts) })).filter((x) => x.msg && x.r.lineUserId) as { r: RankRow; msg: string }[];
-  const withoutLine = rows.filter((r) => messageFor(mode, r, opts) && !r.lineUserId).length;
+  const { rows, size } = await ranking();
+  const targets = rows.map((r) => ({ r, msg: messageFor(mode, r, opts, size) })).filter((x) => x.msg && x.r.lineUserId) as { r: RankRow; msg: string }[];
+  const withoutLine = rows.filter((r) => messageFor(mode, r, opts, size) && !r.lineUserId).length;
   const audience = AUDIENCE_LABEL[mode] + (withoutLine > 0 ? ` (อีก ${withoutLine} คนยังไม่ลงทะเบียน จึงส่งไม่ได้)` : "");
   return { count: targets.length, sample: targets[0]?.msg ?? "— ยังไม่มีผู้รับในกลุ่มนี้ —", audience };
 }
@@ -220,9 +241,9 @@ export async function academicBroadcast(
     const recips = await membersInSet(idList(exam.not_filled_ids ?? ""));
     targets = recips.map((r) => ({ lineUserId: r.lineUserId, msg }));
   } else {
-    const { rows } = await ranking();
+    const { rows, size } = await ranking();
     targets = rows
-      .map((r) => ({ r, msg: messageFor(mode, r, opts) }))
+      .map((r) => ({ r, msg: messageFor(mode, r, opts, size) }))
       .filter((x) => x.msg && x.r.lineUserId)
       .map((x) => ({ lineUserId: x.r.lineUserId, msg: x.msg! }));
   }
@@ -244,7 +265,7 @@ export async function academicBroadcast(
 
 // ── cron: ส่งเตือนกรอกเอกสารที่ตั้งเวลาไว้และถึงกำหนดแล้ว ─────────────────────
 export async function runDueDocReminders(adminIds: string[], now = Date.now()): Promise<number> {
-  const exams = await readExams();
+  const exams = await readExams(true);
   let sent = 0;
   for (const e of exams) {
     if (e.doc_reminder_status !== "pending" || !e.doc_reminder_at || !e.doc_link) continue;
@@ -254,6 +275,5 @@ export async function runDueDocReminders(adminIds: string[], now = Date.now()): 
     if (e.__row) await patchRecord("exams", e.__row, e as never, { doc_reminder_status: "sent" });
     if (r.ok) sent++;
   }
-  if (sent) invalidateExams();
   return sent;
 }

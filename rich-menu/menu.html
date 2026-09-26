@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:"LS";font-weight:400;src:url("../public/fonts/LINESeedSansTH_W_Rg.woff2")}
+@font-face{font-family:"LS";font-weight:700;src:url("../public/fonts/LINESeedSansTH_W_Bd.woff2")}
+@font-face{font-family:"LS";font-weight:800;src:url("../public/fonts/LINESeedSansTH_W_XBd.woff2")}
+@font-face{font-family:"LSE";font-weight:800;src:url("../public/fonts/LINESeedSans_W_XBd.woff2")}
+html,body{margin:0;width:2500px;height:1686px;overflow:hidden;background:#030b2b;font-family:"LSE","LS",sans-serif;color:#fff}
+canvas{position:absolute;inset:0;width:2500px;height:1686px}
+.grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:26px;padding:34px}
+.t{position:relative;border-radius:64px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;padding:0 64px 70px;
+ background:linear-gradient(160deg,rgba(255,255,255,.20),rgba(255,255,255,.06));
+ box-shadow:inset 0 3px 0 rgba(255,255,255,.45),inset 0 0 0 3px rgba(255,255,255,.14),0 30px 60px -30px rgba(0,0,0,.6)}
+.t::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 70% at 0% 0%,rgba(255,255,255,.22),transparent 50%)}
+.ic{position:absolute;top:70px;left:64px;width:170px;height:170px;border-radius:52px;display:grid;place-items:center;
+ background:linear-gradient(160deg,rgba(255,255,255,.34),rgba(255,255,255,.1));box-shadow:inset 0 3px 0 rgba(255,255,255,.6)}
+.ic svg{width:100px;height:100px}
+.t h2{margin:0;font-family:"LS";font-weight:800;font-size:92px;letter-spacing:-2px;line-height:1.05}
+.t p{margin:14px 0 0;font-family:"LS";font-weight:400;font-size:44px;color:rgba(220,235,255,.85)}
+.gold{background:linear-gradient(160deg,rgba(252,211,77,.42),rgba(245,158,11,.12))}
+.gold .ic{background:linear-gradient(160deg,#fff1b8,#e8a91c);}
+.hero{background:linear-gradient(160deg,rgba(96,165,250,.45),rgba(61,91,255,.16))}
+.badge{position:absolute;top:84px;right:64px;font-family:"LSE";font-weight:800;font-size:40px;letter-spacing:4px;color:rgba(255,255,255,.75)}
+</style></head><body><canvas id="c" width="1250" height="843"></canvas>
+<div class="grid">
+<div class="t hero"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10.6 12 4l8.5 6.6V19a1.5 1.5 0 0 1-1.5 1.5h-4.2v-5.6H9.2v5.6H5A1.5 1.5 0 0 1 3.5 19z"/></svg></div><span class="badge">BM33 APP</span><h2>หน้าหลัก</h2><p>สรุปวันนี้ · นับถอยหลังสอบ</p></div>
+<div class="t"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16.5V11a6 6 0 1 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></svg></div><h2>ประกาศ & งาน</h2><p>เดดไลน์ · ฟอร์มที่ต้องทำ</p></div>
+<div class="t"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><circle cx="8.5" cy="14" r=".9" fill="#fff"/><circle cx="12" cy="14" r=".9" fill="#fff"/><circle cx="15.5" cy="14" r=".9" fill="#fff"/></svg></div><h2>ตารางเรียน</h2><p>วันนี้เรียนอะไร · ตึกไหน</p></div>
+<div class="t"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.5" r="4"/><path d="M4.5 20c1.4-3.6 4.2-5.3 7.5-5.3s6.1 1.7 7.5 5.3"/></svg></div><h2>ของฉัน</h2><p>เงินรุ่น · งานค้าง · สถานะ</p></div>
+<div class="t gold"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#6b4304" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 3.5v6.3M12 14.2v6.3M3.5 12h6.3M14.2 12h6.3M6 6l4.4 4.4M13.6 13.6 18 18M18 6l-4.4 4.4M10.4 13.6 6 18" stroke-width="1.3"/></svg></div><h2>เซียมซี</h2><p>ดูดวงรายวัน · สะสม 200 ใบ</p></div>
+<div class="t"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a7.5 7.5 0 0 1-11 6.6L4.5 20l1.3-4A7.5 7.5 0 1 1 20 12z"/></svg></div><h2>ถามบอท</h2><p>ถามได้ทุกเรื่อง · ติดต่อกรรมการ</p></div>
+</div>
+<script>
+const c=document.getElementById('c');const gl=c.getContext('webgl',{preserveDrawingBuffer:true});
+const V='attribute vec2 p; void main(){ gl_Position = vec4(p,0.,1.); }';
+const F=`
+precision mediump float;
+uniform vec2 r;
+uniform float t;
+uniform float e; // energy (0..1) — เพิ่มความเร็ว/ความสว่างตอนสุ่มเซียมซี
+float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(h(i), h(i+vec2(1.0,0.0)), u.x), mix(h(i+vec2(0.0,1.0)), h(i+vec2(1.0,1.0)), u.x), u.y); }
+float fbm(vec2 p){ float v = 0.0, a = 0.5; mat2 m = mat2(1.6, 1.2, -1.2, 1.6);
+  for (int i = 0; i < 5; i++) { v += a*n(p); p = m*p; a *= 0.5; } return v; }
+void main(){
+  vec2 uv = gl_FragCoord.xy / r;
+  vec2 p = (gl_FragCoord.xy - 0.5*r) / min(r.x, r.y);
+  float tt = t * (0.05 + 0.10*e);
+  vec2 q = vec2(fbm(p*1.3 + vec2(0.0, tt)), fbm(p*1.3 + vec2(5.2, 1.3) - tt));
+  vec2 w = vec2(fbm(p*1.1 + 3.2*q + vec2(1.7, 9.2) + 0.7*tt), fbm(p*1.1 + 3.2*q + vec2(8.3, 2.8) - 0.45*tt));
+  float f = fbm(p*1.05 + 2.6*w);
+  float silk = 0.5 + 0.5*sin((p.y*1.6 - p.x*0.6 + w.x*1.4 + f*1.8)*4.2 + tt*5.0);
+  vec3 c0 = vec3(0.006, 0.020, 0.085);
+  vec3 c1 = vec3(0.020, 0.105, 0.430);
+  vec3 c2 = vec3(0.070, 0.330, 0.960);
+  vec3 c3 = vec3(0.330, 0.720, 1.000);
+  vec3 c4 = vec3(0.780, 0.940, 1.000);
+  vec3 col = mix(c0, c1, smoothstep(0.12, 0.62, f));
+  col = mix(col, c2, smoothstep(0.42, 0.88, f*0.9 + w.y*0.35));
+  col = mix(col, c3, pow(silk, 5.0) * smoothstep(0.30, 0.85, f) * (0.50 + 0.3*e));
+  col += c4 * pow(silk, 22.0) * (0.16 + 0.25*e);
+  col += vec3(0.12, 0.08, 0.02) * e * smoothstep(0.55, 0.95, f); // แสงทองจาง ๆ ตอนสุ่ม
+  col *= 1.0 - 0.42*length(uv - vec2(0.5, 0.35));
+  gl_FragColor = vec4(col, 1.0);
+}`;
+function sh(t,s){const x=gl.createShader(t);gl.shaderSource(x,s);gl.compileShader(x);return x}
+const pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,V));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,F));gl.linkProgram(pr);gl.useProgram(pr);
+const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+const l=gl.getAttribLocation(pr,'p');gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+gl.viewport(0,0,1250,843);gl.uniform2f(gl.getUniformLocation(pr,'r'),1250,843);gl.uniform1f(gl.getUniformLocation(pr,'t'),57.0);gl.uniform1f(gl.getUniformLocation(pr,'e'),0.15);
+gl.drawArrays(gl.TRIANGLES,0,3);window.done=true;
+</script></body></html>

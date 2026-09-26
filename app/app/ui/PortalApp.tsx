@@ -1,0 +1,127 @@
+"use client";
+// แอปสมาชิก BM33 — โครงหลัก: พื้นหลังน้ำไหล + 5 แท็บ + sheet + overlay การสุ่ม
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import FluidBackground from "./FluidBackground";
+import { useApp, haptic } from "./useApp";
+import { TabBar, TabKey, TABS, Sheet, Toast } from "./Chrome";
+import Home, { useNow } from "./Home";
+import News, { AnnouncementDetail } from "./News";
+import Schedule from "./Schedule";
+import Me from "./Me";
+import FortuneScreen from "./fortune/Fortune";
+import { DrawOverlay, Splash, ConfirmScreen, RegisterScreen, OutsideLine } from "./Overlays";
+
+const TAB_TITLE: Record<TabKey, string> = { home: "BM33", news: "ประกาศ", schedule: "ตาราง", me: "ของฉัน", fortune: "เซียมซี" };
+
+export default function PortalApp() {
+  const app = useApp();
+  const { phase, data } = app;
+  const [tab, setTab] = useState<TabKey>("home");
+  const [newsSection, setNewsSection] = useState<"ann" | "forms">("ann");
+  const [meSection, setMeSection] = useState<string | undefined>();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [energy, setEnergy] = useState(0);
+  const [toast, setToast] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+  const screens = useRef<Partial<Record<TabKey, HTMLElement | null>>>({});
+  const now = useNow(1000, phase.kind === "ready");
+
+  // แท็บเริ่มต้นจากลิงก์ (?tab=news) — ใช้กับปุ่มเมนู LINE
+  useEffect(() => {
+    const t = new URL(window.location.href).searchParams.get("tab") as TabKey | null;
+    if (t && TABS.some((x) => x.key === t)) setTab(t);
+    const ann = new URL(window.location.href).searchParams.get("a");
+    if (ann) setOpenId(ann);
+  }, []);
+
+  // แถบชื่อบางด้านบนเมื่อเลื่อน
+  useEffect(() => {
+    const el = screens.current[tab];
+    if (!el) return;
+    const on = () => setScrolled(el.scrollTop > 64);
+    on();
+    el.addEventListener("scroll", on, { passive: true });
+    return () => el.removeEventListener("scroll", on);
+  }, [tab, phase.kind]);
+
+  const go = useCallback((t: TabKey, section?: string) => {
+    haptic();
+    if (t === "news" && (section === "forms" || section === "ann")) setNewsSection(section);
+    if (t === "me") setMeSection(section);
+    if (t === tab) screens.current[t]?.scrollTo({ top: 0, behavior: "smooth" });
+    setTab(t);
+  }, [tab]);
+
+  const claimForm = useCallback(async (id: string) => {
+    const r = await app.api("claim", { formId: id });
+    setToast(r.ok ? (r.state === "done" ? "ตรวจพบในระบบแล้ว ✓ ขอบคุณนะ" : "รับเรื่องแล้ว รอกรรมการตรวจ 🙏") : String(r.error ?? "ลองใหม่อีกครั้งนะ"));
+    app.refresh();
+  }, [app]);
+
+  const badges = useMemo(() => {
+    if (!data) return {};
+    const urgentAnn = data.board.announcements.some((a) => a.deadline_at && new Date(a.deadline_at).getTime() - now < 2 * 86_400_000 && new Date(a.deadline_at).getTime() > now);
+    const undone = data.mine.forms.some((f) => f.state === "none");
+    const today = new Date(now + 7 * 3600_000).toISOString().slice(0, 10);
+    return {
+      news: urgentAnn || undone,
+      me: data.mine.fees.overdue > 0,
+      fortune: data.mine.fortune.last_day !== today,
+    } as Partial<Record<TabKey, boolean>>;
+  }, [data, now]);
+
+  const openAnn = data?.board.announcements.find((a) => a.id === openId) ?? null;
+
+  if (phase.kind === "boot" && !data) return <><FluidBackground /><div className="bm-grain" /><Splash /></>;
+  if (phase.kind === "outside") return <><FluidBackground /><OutsideLine /></>;
+  if (phase.kind === "error") return <><FluidBackground /><Splash text={phase.message} /></>;
+  if (phase.kind === "confirm") {
+    return (
+      <>
+        <FluidBackground />
+        <ConfirmScreen candidate={phase.candidate} picture={phase.picture} onYes={() => app.confirm(phase.claim)} onNo={() => app.setPhase({ kind: "register", picture: phase.picture })} />
+      </>
+    );
+  }
+  if (phase.kind === "register") return <><FluidBackground /><RegisterScreen name={phase.name} onSubmit={app.register} /></>;
+  if (!data) return <><FluidBackground /><div className="bm-grain" /><Splash text="กำลังโหลดข้อมูลล่าสุด…" /></>;
+
+  return (
+    <>
+      <FluidBackground energy={energy} />
+      <div className="bm-grain" />
+      {app.isPreview && <div className="preview-flag">โหมดพรีวิว (แอดมิน) · {data.mine.me.nickname}</div>}
+      <div className={`navbar ${scrolled && tab !== "home" ? "show" : ""}`}>{TAB_TITLE[tab]}</div>
+
+      <main className="shell">
+        <section ref={(el) => { screens.current.home = el; }} className={`screen ${tab === "home" ? "active" : ""}`} aria-hidden={tab !== "home"}>
+          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} />
+        </section>
+        <section ref={(el) => { screens.current.news = el; }} className={`screen ${tab === "news" ? "active" : ""}`} aria-hidden={tab !== "news"}>
+          <News data={data} active={tab === "news"} openAnn={setOpenId} section={newsSection} setSection={setNewsSection} claimForm={claimForm} />
+        </section>
+        <section ref={(el) => { screens.current.schedule = el; }} className={`screen ${tab === "schedule" ? "active" : ""}`} aria-hidden={tab !== "schedule"}>
+          <Schedule data={data} active={tab === "schedule"} />
+        </section>
+        <section ref={(el) => { screens.current.fortune = el; }} className={`screen ${tab === "fortune" ? "active" : ""}`} aria-hidden={tab !== "fortune"}>
+          <FortuneScreen
+            sid={data.mine.me.sid} nickname={data.mine.me.nickname} server={data.mine.fortune}
+            active={tab === "fortune"} onEnergy={setEnergy} api={app.api} liff={app.liff} preview={app.isPreview} toast={setToast}
+          />
+        </section>
+        <section ref={(el) => { screens.current.me = el; }} className={`screen ${tab === "me" ? "active" : ""}`} aria-hidden={tab !== "me"}>
+          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} />
+        </section>
+      </main>
+
+      <TabBar tab={tab} onTab={(t) => go(t)} badges={badges} />
+
+      <Sheet open={!!openAnn} onClose={() => setOpenId(null)}>
+        {openAnn && <AnnouncementDetail a={openAnn} now={now} />}
+      </Sheet>
+
+      <DrawOverlay data={data} now={now} />
+      <Toast text={toast} />
+    </>
+  );
+}
