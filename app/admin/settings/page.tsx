@@ -5,7 +5,7 @@ import { getConfig } from "@/lib/bc/config";
 import { readCommittee, seedCommitteeIfEmpty } from "@/lib/bc/committee";
 import { readRoster } from "@/lib/bc/roster";
 import { Head, Sq, type Tone } from "../ui/kit";
-import { ConfigField, RolePassword, CommitteeEditor, RichMenuPanel, AccessLinks } from "../ui/SettingsForms";
+import { ConfigField, RolePassword, CommitteeEditor, RichMenuPanel, AccessLinks, BudgetBaht } from "../ui/SettingsForms";
 import type { LucideIcon } from "lucide-react";
 
 export const runtime = "nodejs";
@@ -48,10 +48,8 @@ export default async function SettingsPage() {
 
       <Group id="ai" icon={Sparkles} tone="purple" title="งบ AI">
         <div className="card">
-          <div className="grid g2">
-            <ConfigField k="ai_budget_usd" label="งบต่อเดือน (ดอลลาร์)" value={cfg.ai_budget_usd ?? "10"} hint="ใช้เกิน 80% → โหมดประหยัด · ครบ 100% → ตอบจากกฎ/แคชอย่างเดียวจนขึ้นเดือนใหม่" />
-            <ConfigField k="ai_user_daily_cap" label="คำถามต่อคนต่อวัน" value={cfg.ai_user_daily_cap ?? "30"} hint="กันคนเดียวใช้งบหมด" />
-          </div>
+          <BudgetBaht usd={Number(cfg.ai_budget_usd) > 0 ? Number(cfg.ai_budget_usd) : 10} rate={Number(cfg.usd_thb) > 0 ? Number(cfg.usd_thb) : 33} />
+          <ConfigField k="ai_user_daily_cap" label="คำถามต่อคนต่อวัน" value={cfg.ai_user_daily_cap ?? "30"} hint="กันคนเดียวใช้งบหมด" />
           <ConfigField k="ai_price_json" label="ราคาโมเดล (ดอลลาร์ต่อ 1 ล้าน token)" value={cfg.ai_price_json ?? ""} placeholder='{"in":0.5,"cached":0.05,"out":3}' hint="ว่าง = ใช้ค่าเริ่มต้น · ใส่ตามหน้าราคาของ Google ถ้าเปลี่ยน" />
         </div>
       </Group>

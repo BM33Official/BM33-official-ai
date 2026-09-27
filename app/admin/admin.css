@@ -359,3 +359,18 @@ details.more > summary::-webkit-details-marker { display: none; }
 .filechip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--blue-soft); color: #0058b8; font-weight: 700; font-size: 13px; margin: 6px 6px 0 0; }
 .zone-dots .d.red { background: var(--red); color: #fff; } .zone-dots .d.close { background: var(--orange); color: #fff; } .zone-dots .d.watch { background: #ffd60a; color: #6b5800; }
 .bignum { font-size: 38px; font-weight: 800; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* ── สิ่งที่ต้องกรอก: ใครกรอก/ยังไม่กรอก ── */
+.who { display: grid; gap: 12px; margin-top: 16px; }
+.who-col { background: var(--fill); border-radius: 14px; padding: 12px 14px; }
+.who-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; font-size: 14px; margin-bottom: 8px; list-style: none; }
+.who-h b { font-size: 16px; }
+.who-h .dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot.red { background: var(--red); } .dot.orange { background: var(--orange); } .dot.green { background: var(--green); }
+details.who-col:not([open]) .who-h { margin-bottom: 0; }
+.namechips { display: flex; flex-wrap: wrap; gap: 6px; }
+.nc { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px 4px 5px; border-radius: 999px; font-size: 13px; font-weight: 700; background: #fff; }
+.nc b { min-width: 24px; height: 20px; border-radius: 10px; display: inline-grid; place-items: center; font-size: 11px; color: #fff; padding: 0 5px; }
+.nc-red b { background: var(--red); } .nc-orange b { background: var(--orange); } .nc-green b { background: var(--green); } .nc-gray b { background: #8e8e93; }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 640px) { .g3 { grid-template-columns: minmax(0, 1fr); } }

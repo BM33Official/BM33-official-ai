@@ -14,7 +14,7 @@ import { cached, bust } from "@/lib/cache";
 export { colLetter };
 
 // เปลี่ยนเลขนี้เมื่อแก้ HEADERS -> ทุก instance จะ ensure header ใหม่อีกรอบ
-const SCHEMA_VERSION = "v3.0";
+const SCHEMA_VERSION = "v3.1";
 
 const MANAGED = (Object.keys(TABS) as TabKey[]).filter((k) => HEADERS[k].length > 0);
 

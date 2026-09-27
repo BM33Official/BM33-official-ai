@@ -11,6 +11,8 @@ export interface FortuneState {
   last_day: string;
   best: string;
   pity: number;
+  jackpot_at: string;
+  jackpots: number;
 }
 
 function toState(r?: FortuneRec | null): FortuneState {
@@ -21,6 +23,8 @@ function toState(r?: FortuneRec | null): FortuneState {
     last_day: r?.last_day || "",
     best: r?.best || "",
     pity: Number(r?.pity) || 0,
+    jackpot_at: r?.jackpot_at || "",
+    jackpots: Number(r?.jackpots) || 0,
   };
 }
 
@@ -45,8 +49,11 @@ export async function syncFortune(studentId: string, client: Partial<FortuneStat
     last_day: clientNewer ? String(client.last_day ?? "") : cur.last_day,
     best: bestOf(cur.best, String(client.best ?? "")),
     pity: clientNewer ? Math.max(0, Number(client.pity) || 0) : cur.pity,
+    jackpot_at: String(client.jackpot_at ?? "") > cur.jackpot_at && !isNaN(Date.parse(String(client.jackpot_at))) && Date.parse(String(client.jackpot_at)) <= Date.now() + 60_000 ? String(client.jackpot_at) : cur.jackpot_at,
+    jackpots: Math.max(cur.jackpots, Math.min(10_000, Number(client.jackpots) || 0)),
   };
-  const unchanged = merged.pulls === cur.pulls && merged.collected === cur.collected && merged.streak === cur.streak && merged.last_day === cur.last_day;
+  const newJackpot = merged.jackpot_at !== cur.jackpot_at;
+  const unchanged = !newJackpot && merged.pulls === cur.pulls && merged.collected === cur.collected && merged.streak === cur.streak && merged.last_day === cur.last_day;
   if (!unchanged) {
     await upsertWhere("fortunes", (r) => digits(r.student_id) === sid, {
       student_id: sid,
@@ -57,7 +64,15 @@ export async function syncFortune(studentId: string, client: Partial<FortuneStat
       best: merged.best,
       pity: String(merged.pity),
       updated_at: nowISO(),
+      jackpot_at: merged.jackpot_at,
+      jackpots: String(merged.jackpots),
     });
+  }
+  // แจ็กพอตใหม่ -> รีเซ็ต Jackpot Pool (ยอดสะสมทั้งรุ่นเริ่มนับใหม่)
+  if (newJackpot) {
+    const total = (await readKeyFresh<FortuneRec>("fortunes")).reduce((a, r) => a + (Number(r.pulls) || 0), 0);
+    const { setConfig } = await import("@/lib/bc/config");
+    await setConfig("fortune_pool_base", String(total), `jackpot ${sid}`).catch(() => {});
   }
   return merged;
 }
@@ -71,4 +86,16 @@ export async function fortuneStats(): Promise<{ players: number; pulls: number; 
     top = Math.max(top, countBits(decodeBits(r.collected)));
   }
   return { players: rows.length, pulls, topCollected: top };
+}
+
+// หอเกียรติยศวันนี้ + Jackpot Pool (สาธารณะในรุ่น: ชื่อเล่นคนแตกแจ็กพอตวันนี้ ตามที่ผู้ใช้ขอ)
+export async function fortuneBoard(today: string, nickOf: (sid: string) => string, poolBase: number) {
+  const rows = await readKey<FortuneRec>("fortunes");
+  const dayOf = (iso: string) => new Date(new Date(iso).getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+  const jackpots = rows
+    .filter((r) => r.jackpot_at && dayOf(r.jackpot_at) === today)
+    .map((r) => ({ name: nickOf(digits(r.student_id)), at: r.jackpot_at! }))
+    .sort((a, b) => b.at.localeCompare(a.at));
+  const total = rows.reduce((a, r) => a + (Number(r.pulls) || 0), 0);
+  return { jackpots, pool: Math.max(0, total - poolBase), players: rows.length, total };
 }

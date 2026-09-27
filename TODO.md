@@ -1,3 +1,13 @@
+# BM33 v4 — polish round (2026-09-28)
+- [x] Rich menu v4: 5 tiles on liquid blue (big หน้าหลัก · ประกาศ(+ต้องกรอก, deep link `focus=ann`) · ของฉัน · เซียมซี · ถามบอท) + LinkTree strip — `rich-menu/menu-v4.html` → `public/rich-menu-v4.jpg`, config `rich_menu_v4_id`
+- [x] App home = compact dashboard: big running countdown, fees/red-zone alert tiles, today's classes row, สิ่งที่ต้องกรอก above ประกาศ (grouped by date, no categories), darker glass panels for readability
+- [x] Schedule tab: today → exams → compact calendar → days ahead
+- [x] Fortune: tiers Bronze/Silver/Gold/Platinum/Diamond/JACKPOT, 200 new rhyming/funny cards, dragon wheel (WheelArt.ts), unskippable cutscene with tier upgrades + near-miss + jackpot slam (Cutscene.tsx), synthesized SFX, Lucky Hour ×2, streak bonus, pity meter, Jackpot Pool, jackpot hall of fame (BC_fortunes `jackpot_at`,`jackpots`; config `fortune_pool_base`)
+- [x] Control center: forms page fixed (server→client function prop crash) + name lists done/claimed/undone/unregistered + remind; approve-all per task + `trust_claims` (self-claim = done); money shown in baht (`usd_thb`, default 33)
+- [x] Reminders: ONE compiled daily digest (`lib/bc/digest.ts`) per person listing only their undone items + link carousel; large outbox payloads gzip-packed (sheet cell limit)
+- [x] Public guide `/join` (auto QR from LINE bot info)
+- [ ] **User:** Settings → เมนู LINE → สร้างเมนู → ลองกับบัญชีฉัน → เปิดใช้กับทุกคน · set OA/OpenChat profile icon · reject old per-item reminders #679/#563 if still pending
+
 # BM33 v3 — TODO (source of truth · started 2026-09-27)
 
 Legend: `[x]` done & verified · `[~]` in progress · `[ ]` not started

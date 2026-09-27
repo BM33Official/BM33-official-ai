@@ -10,7 +10,7 @@ import { readRoster } from "@/lib/bc/roster";
 import { pendingOutbox } from "@/lib/bc/outbox";
 import { currentDaily, parseItems } from "@/lib/bc/daily";
 import { messageQuota } from "@/lib/line";
-import { budgetState } from "@/lib/ai/usage";
+import { budgetState, baht } from "@/lib/ai/usage";
 import { readSlips } from "@/lib/bc/slips";
 import { agenda, AGENDA_TH } from "@/lib/bc/agenda";
 import { thLongDate, bkkDayKey, relativeTh, thShortDate } from "@/lib/time";
@@ -81,7 +81,7 @@ export default async function Today() {
           <Ring value={verified.length} max={roster.length || 100} size={46} stroke={6} tone="blue" label="" />
         </Kpi>
         <Kpi icon={Smartphone} tone="indigo" value={appUsers} unit="คน" label="เปิดแอป BM33 แล้ว" href="/admin/members" />
-        <Kpi icon={Sparkles} tone="purple" value={budget ? `$${budget.spent.toFixed(2)}` : "—"} unit={budget ? `/ $${budget.budget}` : ""} label="ค่า AI เดือนนี้" href="/admin/ai">
+        <Kpi icon={Sparkles} tone="purple" value={budget ? baht(budget.spent, budget.rate) : "—"} unit={budget ? `/ ${baht(budget.budget, budget.rate, 0)}` : ""} label="ค่า AI เดือนนี้" href="/admin/ai">
           {budget && <Ring value={budget.spent} max={budget.budget} size={46} stroke={6} tone={budget.pct > 0.8 ? "red" : "purple"} label="" />}
         </Kpi>
         <Kpi icon={MessageSquare} tone="line" value={quota.remaining === null ? "∞" : quota.remaining.toLocaleString()} label={`ข้อความ LINE เหลือเดือนนี้${quota.limit ? ` (จาก ${quota.limit.toLocaleString()})` : ""}`}>

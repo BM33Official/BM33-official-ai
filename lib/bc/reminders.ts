@@ -1,11 +1,8 @@
-// เตือนใกล้เดดไลน์อัตโนมัติ -> เข้า "กล่องรอตรวจ" + DM หาเจ้าของ -> พิมพ์ approve ถึงจะส่งจริง
-// รอบเตือน (ค่าเริ่มต้น): ก่อน 3 วัน · ก่อน 1 วัน · เช้าวันจริง (ตั้งได้ใน BC_config.reminder_plan)
+// เตือนใกล้เดดไลน์ -> "รออนุมัติ" + DM หาเจ้าของ -> approve ถึงจะส่งจริง
+// อัตโนมัติ = สรุปวันละฉบับ (lib/bc/digest.ts) · ปุ่มเตือนรายเรื่อง (ประกาศ/ฟอร์ม) ยังใช้ฟังก์ชันด้านล่าง
 import { Announcement, FormDef, OutboxItem } from "@/lib/bc/types";
-import { liveAnnouncements, parseLinks, updateAnnouncement } from "@/lib/bc/announcements";
-import { readForms } from "@/lib/bc/forms";
-import { liveUniExams, examStart } from "@/lib/bc/schedule";
+import { parseLinks } from "@/lib/bc/announcements";
 import { createOutbox, reminderMessages } from "@/lib/bc/outbox";
-import { reminderPlan } from "@/lib/bc/config";
 import { dayDiff, thDateTime, relativeTh, bkkParts } from "@/lib/time";
 import { log } from "@/lib/logger";
 
@@ -61,66 +58,17 @@ export async function queueFormReminder(f: FormDef, stage: string): Promise<Outb
   });
 }
 
-// เรียกทุก ~15 นาที (broadcast cron) — สร้างรายการตามรอบที่ถึงแล้ว (ครั้งเดียวต่อรอบ)
+// เรียกทุก ~15 นาที (broadcast cron) — ตั้งแต่ 08:00 น. สร้าง "สรุปเตือนวันนี้" ฉบับเดียว (วันละครั้ง)
+// แทนการเตือนทีละเรื่อง: เพื่อนได้ข้อความเดียวที่รวมเฉพาะเรื่องที่ตัวเองยังไม่ได้ทำ
 export async function runReminderCron(now = Date.now()): Promise<number> {
   const hour = bkkParts(now).hh;
-  if (hour < 8 || hour >= 21) return 0; // เตือนเฉพาะ 08:00–21:00 น.
-  const plan = await reminderPlan();
-  let n = 0;
-
-  const due = (iso: string): number | null => {
-    if (!iso) return null;
-    const t = new Date(iso).getTime();
-    if (isNaN(t) || t <= now + 45 * 60_000) return null; // เหลือไม่ถึง 45 นาที ไม่ต้องเตือนแล้ว
-    const d = dayDiff(iso, now);
-    return plan.includes(d) ? d : null;
-  };
-
-  for (const a of await liveAnnouncements()) {
-    const d = due(a.deadline_at);
-    if (d === null) continue;
-    let sent: Record<string, string> = {};
-    try { sent = JSON.parse(a.reminders || "{}"); } catch { /* */ }
-    const key = `d${d}`;
-    if (sent[key]) continue;
-    try {
-      const item = await queueAnnouncementReminder(a, key);
-      if (item) {
-        n++;
-        await updateAnnouncement(a.id, { reminders: JSON.stringify({ ...sent, [key]: item.id }) });
-      }
-    } catch (err) {
-      log.warn("reminder_ann_failed", { id: a.id, message: String(err).slice(0, 200) });
-    }
+  if (hour < 8 || hour >= 21) return 0;
+  try {
+    const { queueDailyDigest } = await import("@/lib/bc/digest");
+    const r = await queueDailyDigest(now);
+    return r.item && Date.now() - new Date(r.item.created_at).getTime() < 60_000 ? 1 : 0;
+  } catch (err) {
+    log.warn("reminder_digest_failed", { message: String(err).slice(0, 200) });
+    return 0;
   }
-
-  for (const f of await readForms()) {
-    if (f.status === "closed") continue;
-    const d = due(f.deadline_at ?? "");
-    if (d === null) continue;
-    try {
-      const item = await queueFormReminder(f, `d${d}`);
-      if (item && item.created_at && Date.now() - new Date(item.created_at).getTime() < 60_000) n++;
-    } catch (err) {
-      log.warn("reminder_form_failed", { id: f.form_id, message: String(err).slice(0, 200) });
-    }
-  }
-
-  // สอบมหาวิทยาลัย: เตือนก่อน 3 วัน และก่อน 1 วัน
-  for (const e of await liveUniExams()) {
-    const at = examStart(e).toISOString();
-    const d = dayDiff(at, now);
-    if (![3, 1].includes(d) || new Date(at).getTime() < now) continue;
-    const text = `📝 ${d === 1 ? "พรุ่งนี้สอบแล้ว!" : `อีก ${d} วันสอบ`}\n${e.name}\n\n📅 ${thDateTime(at)}${e.end ? `–${e.end}` : ""}\n📍 ${[e.building, e.room].filter(Boolean).join(" ห้อง ") || "ดูสถานที่ในแอป"}\n\nสู้ ๆ นะทุกคน เป็นกำลังใจให้ 💙`;
-    try {
-      await createOutbox({
-        kind: "exam", ref_id: `exam:${e.id}:d${d}`, title: `${d === 1 ? "พรุ่งนี้สอบ" : `อีก ${d} วันสอบ`}: ${e.name}`, audience: "all",
-        messages: reminderMessages({ text, title: e.name, links: [{ label: "ดูตารางในแอป", url: `${APP}?tab=schedule` }] }),
-        preview: text, expires_at: at,
-      });
-    } catch (err) {
-      log.warn("reminder_exam_failed", { id: e.id, message: String(err).slice(0, 200) });
-    }
-  }
-  return n;
 }

@@ -18,5 +18,13 @@ export const viewport: Viewport = {
 };
 
 export default function PortalLayout({ children }: { children: ReactNode }) {
-  return <div className="bm-root">{children}</div>;
+  return (
+    <div className="bm-root">
+      {/* Cinzel: ตัวอักษรโรมันหรู ๆ สำหรับเหรียญ BM33 และชื่อระดับในเซียมซี */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Noto+Serif+TC:wght@700&display=swap" />
+      {children}
+    </div>
+  );
 }

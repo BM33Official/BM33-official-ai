@@ -124,6 +124,11 @@ export async function POST(req: Request, { params }: { params: { action: string 
           await setStatus(s.sid, form.form_id, "confirmed", "auto", "ตรวจพบในชีตตอนกดในแอป");
           return NextResponse.json({ ok: true, state: "done" });
         }
+        // ฟอร์มที่แอดมินตั้ง "เชื่อใจ" -> กดแล้วเสร็จเลย ไม่ต้องรอตรวจ
+        if (form.trust_claims === "1") {
+          await setStatus(s.sid, form.form_id, "confirmed", "self_claim", "กดทำแล้วในแอป (เชื่อใจ)");
+          return NextResponse.json({ ok: true, state: "done" });
+        }
         await setStatus(s.sid, form.form_id, "claimed", "self_claim", "กดทำแล้วในแอป");
         return NextResponse.json({ ok: true, state: "claimed" });
       }

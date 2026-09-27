@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/bc/auth";
 import { readTable } from "@/lib/google-sheets";
 import { readRoster } from "@/lib/bc/roster";
 import { getConfigValue } from "@/lib/bc/config";
-import { budgetState } from "@/lib/ai/usage";
+import { budgetState, baht } from "@/lib/ai/usage";
 import { corpusIndex, corpusStats } from "@/lib/ai/corpus";
 import { agoTh, bkkDayKey } from "@/lib/time";
 import { Head, Sq, Ring, Bars, Meter, type Tone } from "../ui/kit";
@@ -60,14 +60,14 @@ export default async function AiPage() {
         <div className="card">
           <div className="card-h"><h3 className="row" style={{ gap: 10, margin: 0 }}><Sq icon={Gauge} tone="purple" /> งบเดือนนี้</h3><span className={`badge ${b.mode === "normal" ? "b-green" : b.mode === "lean" ? "b-orange" : "b-red"}`}>{modeTh}</span></div>
           <div className="row" style={{ gap: 24, alignItems: "center" }}>
-            <Ring value={b.spent} max={b.budget} size={130} stroke={14} tone={b.pct > 0.8 ? "red" : "purple"} label={`$${b.spent.toFixed(2)}`} sub={`จาก $${b.budget}`} />
+            <Ring value={b.spent} max={b.budget} size={130} stroke={14} tone={b.pct > 0.8 ? "red" : "purple"} label={baht(b.spent, b.rate)} sub={`จาก ${baht(b.budget, b.rate, 0)}`} />
             <div className="stack" style={{ gap: 10 }}>
-              <div><div className="bignum" style={{ fontSize: 28, color: b.projected > b.budget ? "var(--red-ink)" : undefined }}>${b.projected.toFixed(2)}</div><div className="hint">คาดว่าทั้งเดือน</div></div>
-              <div><div className="bignum" style={{ fontSize: 28 }}>{b.avgAnswer ? `${(b.avgAnswer * 100).toFixed(2)}¢` : "—"}</div><div className="hint">ต่อ 1 คำถาม (เฉลี่ย)</div></div>
+              <div><div className="bignum" style={{ fontSize: 28, color: b.projected > b.budget ? "var(--red-ink)" : undefined }}>{baht(b.projected, b.rate)}</div><div className="hint">คาดว่าทั้งเดือน</div></div>
+              <div><div className="bignum" style={{ fontSize: 28 }}>{b.avgAnswer ? `${(b.avgAnswer * b.rate * 100).toFixed(1)} สต.` : "—"}</div><div className="hint">ต่อ 1 คำถาม (เฉลี่ย)</div></div>
             </div>
           </div>
-          <div className="label" style={{ marginTop: 18 }}>รายวัน (วันนี้ ${b.today.toFixed(3)})</div>
-          <Bars values={days.length ? days : [0]} title={(i) => `${i + 1} · $${days[i]?.toFixed(3)}`} />
+          <div className="label" style={{ marginTop: 18 }}>รายวัน (วันนี้ {baht(b.today, b.rate)})</div>
+          <Bars values={days.length ? days : [0]} title={(i) => `${i + 1} · ${baht(days[i] ?? 0, b.rate)}`} />
           <div className="hint" style={{ marginTop: 4 }}>1 – {dim} {month}</div>
         </div>
 
@@ -81,7 +81,7 @@ export default async function AiPage() {
                   <div key={f} className="li" style={{ padding: "8px 12px" }}>
                     <span style={{ width: 12, height: 12, borderRadius: 4, flex: "none" }} className={`c-${FEATURE[f]?.tone ?? "gray"}`} />
                     <div className="li-b"><b>{FEATURE[f]?.th ?? f}</b><small>{v.calls.toLocaleString()} ครั้ง</small></div>
-                    <b>${v.usd.toFixed(3)}</b>
+                    <b>{baht(v.usd, b.rate)}</b>
                   </div>
                 ))}
               </div>

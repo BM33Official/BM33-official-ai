@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppData } from "./useApp";
 import type { TabKey } from "./Chrome";
 import { initialOf } from "./Chrome";
 import { haptic } from "./useApp";
-import { IChevronR, IClock, IWallet, IShield, ISpark, ICheck, ILink } from "./icons";
-import { bkkParts, bkkDayKey, countdownParts, relativeTh, agoTh, TH_DAYS, TH_MONTHS } from "@/lib/time";
+import { IChevronR, IClock, IWallet, IShield, ISpark, ICheck } from "./icons";
+import { bkkParts, bkkDayKey, countdownParts, relativeTh, agoTh, dayDiff, thDateTime, TH_DAYS, TH_MONTHS } from "@/lib/time";
 
 export function useNow(ms = 1000, active = true) {
   const [now, setNow] = useState(() => Date.now());
@@ -62,33 +62,49 @@ export const CAT: Record<string, { em: string; c1: string; c2: string }> = {
 export const catOf = (c: string) => CAT[c] ?? CAT["ทั่วไป"];
 type Ann = AppData["board"]["announcements"][number];
 
+// จัดกลุ่มประกาศตามวันที่ลง (ปักหมุดขึ้นก่อน)
+function dateGroup(iso: string, now: number): string {
+  const d = -dayDiff(iso, now);
+  if (d <= 0) return "วันนี้";
+  if (d === 1) return "เมื่อวาน";
+  if (d < 7) return "สัปดาห์นี้";
+  return "ก่อนหน้านี้";
+}
+const GROUP_ORDER = ["ปักหมุด", "วันนี้", "เมื่อวาน", "สัปดาห์นี้", "ก่อนหน้านี้"];
+
 export default function Home({
-  data, active, picture, openAnn, go, claimForm,
+  data, active, picture, openAnn, go, claimForm, focus, onFocused,
 }: {
   data: AppData; active: boolean; picture: string;
   openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string) => Promise<void>;
+  focus?: string; onFocused?: () => void;
 }) {
+  const todoRef = useRef<HTMLElement>(null);
+  const annRef = useRef<HTMLElement>(null);
+  // ปุ่ม "ประกาศ" ในเมนู LINE -> เลื่อนมาที่สิ่งที่ต้องกรอก/ประกาศเลย
+  useEffect(() => {
+    if (!focus) return;
+    const t = setTimeout(() => { (todoRef.current ?? annRef.current)?.scrollIntoView({ behavior: "smooth", block: "start" }); onFocused?.(); }, 450);
+    return () => clearTimeout(t);
+  }, [focus, onFocused]);
   const now = useNow(1000, active);
   const { board, mine } = data;
   const p = bkkParts(now);
   const today = bkkDayKey(now);
-  const [cat, setCat] = useState("ทั้งหมด");
   const [more, setMore] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const nextExam = board.exams.find((e) => new Date(e.at).getTime() > now - 3 * 3600_000);
-  const todays = board.schedule.filter((s) => s.date === today);
+  const todays = board.schedule.filter((s) => s.date === today).sort((a, b) => a.start.localeCompare(b.start));
   const tomorrowKey = bkkDayKey(now + 86_400_000);
-  const tomorrows = board.schedule.filter((s) => s.date === tomorrowKey);
+  const tomorrows = board.schedule.filter((s) => s.date === tomorrowKey).sort((a, b) => a.start.localeCompare(b.start));
+  const classes = todays.length ? todays : tomorrows;
   const fees = mine.fees;
   const zone = mine.zone;
 
-  // ประกาศ: ปักหมุด/ใกล้เดดไลน์ขึ้นก่อน
-  const score = (a: Ann) => (a.pinned ? 4 : 0) + (a.deadline_at && ["urgent", "soon"].includes(deadlineTone(a.deadline_at, now)) ? 2 : 0);
-  const all = useMemo(() => [...board.announcements].sort((a, b) => score(b) - score(a) || b.created_at.localeCompare(a.created_at)), [board.announcements, Math.floor(now / 60_000)]); // eslint-disable-line react-hooks/exhaustive-deps
-  const cats = ["ทั้งหมด", ...Array.from(new Set(board.announcements.map((a) => a.category)))];
-  const list = all.filter((a) => cat === "ทั้งหมด" || a.category === cat);
-  const [hero, ...rest] = list;
-  const shown = more ? rest : rest.slice(0, 4);
+  // ประกาศ: ปักหมุด -> ใหม่สุด แล้วแบ่งตามวันที่
+  const all = useMemo(() => [...board.announcements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at)), [board.announcements]);
+  const shown = more ? all : all.slice(0, 6);
+  const groups = GROUP_ORDER.map((g) => ({ g, list: shown.filter((a) => (a.pinned ? "ปักหมุด" : dateGroup(a.created_at, now)) === g) })).filter((x) => x.list.length);
 
   // สิ่งที่ต้องกรอก
   const stateOf = (id: string) => mine.forms.find((f) => f.id === id)?.state ?? "none";
@@ -96,9 +112,12 @@ export default function Home({
   const todo = forms.filter((f) => stateOf(f.id) !== "done");
   const done = forms.filter((f) => stateOf(f.id) === "done");
 
+  const owe = fees.months.length > 0 && fees.outstanding > 0;
+  const zoneBad = zone.level === "red" || zone.level === "close";
+
   return (
-    <div className="col feed">
-      <header className="hello">
+    <div className="col dash">
+      <header className="dash-head">
         <div>
           <div className="when">{`วัน${TH_DAYS[p.dow]}ที่ ${p.d} ${TH_MONTHS[p.m]}`}</div>
           <h1>{greeting(now)} {mine.me.nickname}</h1>
@@ -108,118 +127,99 @@ export default function Home({
         </button>
       </header>
 
-      {/* แถบสั้นบนสุด: สอบถัดไป + สถานะส่วนตัว (แตะไปหน้าที่เกี่ยวข้อง) */}
-      <div className="pills">
-        {nextExam && (
-          <button className="pill exam press" onClick={() => go("schedule")}>
-            <IClock width={15} height={15} />
-            <span className="ellipsis">{nextExam.name}</span>
-            <b><Countdown iso={nextExam.at} now={now} /></b>
-          </button>
-        )}
-        {fees.months.length > 0 && (
-          <button className={`pill press ${fees.overdue ? "bad" : fees.outstanding ? "warn" : "ok"}`} onClick={() => go("me", "fees")}>
-            <IWallet width={15} height={15} />{fees.outstanding > 0 ? `ค้าง ${fees.outstanding.toLocaleString()}฿` : "เงินรุ่นครบ"}
-          </button>
-        )}
-        <button className={`pill press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
-          <IShield width={15} height={15} />{zone.title}
+      {/* นับถอยหลังสอบ — เห็นเลขวิ่งชัด แต่ไม่กินที่ */}
+      {nextExam && (
+        <button className="cd press" onClick={() => go("schedule")}>
+          <div className="cd-l">
+            <span className="cd-lbl">สอบถัดไป</span>
+            <span className="cd-name">{nextExam.name}</span>
+            <span className="cd-when">{thDateTime(nextExam.at)}</span>
+          </div>
+          <Countdown iso={nextExam.at} now={now} />
+        </button>
+      )}
+
+      {/* สถานะส่วนตัวที่ห้ามพลาด */}
+      <div className="alerts">
+        <button className={`alert press ${owe ? (fees.overdue ? "bad" : "warn") : "ok"}`} onClick={() => go("me", "fees")}>
+          <span className="al-ic"><IWallet width={18} height={18} /></span>
+          <span className="al-t"><small>เงินรุ่น</small><b>{fees.months.length === 0 ? "ยังไม่เปิดรอบ" : owe ? `ค้าง ${fees.outstanding.toLocaleString()} ฿` : "จ่ายครบแล้ว"}</b>{owe && <em>แตะเพื่อจ่าย/ส่งสลิป</em>}</span>
+        </button>
+        <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
+          <span className="al-ic"><IShield width={18} height={18} /></span>
+          <span className="al-t"><small>จำข้อสอบ</small><b>{zone.title}</b>{zoneBad && <em>ยังไม่ได้จำ {zone.misses} ครั้ง</em>}</span>
         </button>
       </div>
 
       {board.notice && <div className="notice"><span>📣</span><span className="selectable">{board.notice}</span></div>}
 
-      {/* ── ประกาศ (สำคัญที่สุด) ── */}
-      <div className="sect big"><h2>ประกาศ</h2><span className="muted small b">{board.announcements.length} เรื่อง</span></div>
-      {cats.length > 2 && (
-        <div className="hscroll chips-row">
-          {cats.map((c) => (
-            <button key={c} className={`fchip ${cat === c ? "on" : ""}`} onClick={() => { haptic(); setCat(c); setMore(false); }}>
-              {c !== "ทั้งหมด" && <span>{catOf(c).em}</span>}{c}
-            </button>
-          ))}
-        </div>
-      )}
-      {hero ? (
-        <>
-          <button className="hero press" onClick={() => openAnn(hero.id)} style={{ background: `linear-gradient(150deg, ${catOf(hero.category).c1}, ${catOf(hero.category).c2})` }}>
-            <div className="hero-em" aria-hidden>{catOf(hero.category).em}</div>
-            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-              <span className="hero-cat">{hero.pinned ? "📌 " : ""}{hero.category}</span>
-              {(hero.deadline_at || hero.event_at) && <DeadlineChip iso={hero.deadline_at || hero.event_at} now={now} prefix={hero.deadline_at ? "ปิด " : ""} />}
-            </div>
-            <div className="hero-ttl">{hero.title}</div>
-            {hero.summary && <div className="hero-sum clamp3">{hero.summary}</div>}
-            <div className="hero-by">{hero.author || "กรรมการรุ่น"}{hero.author_role ? ` · ${hero.author_role}` : ""} · {agoTh(hero.created_at, now)}</div>
-          </button>
-          <div className="feed-list">
-            {shown.map((a) => <FeedRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} />)}
-          </div>
-          {rest.length > 4 && (
-            <button className="linkbtn" onClick={() => { haptic(); setMore((v) => !v); }}>{more ? "ย่อ" : `ดูประกาศทั้งหมด (${list.length})`}</button>
-          )}
-        </>
-      ) : <div className="empty"><div className="big">📭</div>ยังไม่มีประกาศตอนนี้</div>}
-
-      {/* ── สิ่งที่ต้องกรอก ── */}
-      {forms.length > 0 && (
-        <>
-          <div className="sect big">
-            <h2>สิ่งที่ต้องกรอก</h2>
-            <span className="progress-mini"><i style={{ width: `${(done.length / forms.length) * 100}%` }} /></span>
-            <span className="muted small b">{done.length}/{forms.length}</span>
-          </div>
-          {todo.length === 0 && <div className="allclear">🎉 กรอกครบทุกอย่างแล้ว</div>}
-          <div className="feed-list">
-            {todo.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} now={now} onClaim={() => claimForm(f.id)} preview={!!data.preview} />)}
-          </div>
-          {done.length > 0 && (
-            <>
-              <button className="linkbtn" onClick={() => setShowDone((v) => !v)}>✓ กรอกแล้ว {done.length} รายการ {showDone ? "▴" : "▾"}</button>
-              {showDone && <div className="feed-list">{done.map((f) => <TodoRow key={f.id} f={f} state="done" now={now} onClaim={async () => {}} preview />)}</div>}
-            </>
-          )}
-        </>
-      )}
-
-      {/* ── วันนี้ ── */}
-      <div className="sect big"><h2>{todays.length ? "วันนี้เรียน" : tomorrows.length ? "พรุ่งนี้เรียน" : "วันนี้"}</h2><button className="more" onClick={() => go("schedule")}>ตารางทั้งหมด</button></div>
-      {(todays.length ? todays : tomorrows).length ? (
-        <div className="timeline">
-          {(todays.length ? todays : tomorrows.slice(0, 5)).map((s) => {
-            const st = new Date(`${s.date}T${s.start || "00:00"}:00+07:00`).getTime();
-            const en = new Date(`${s.date}T${s.end || s.start || "23:59"}:00+07:00`).getTime();
-            const live = now >= st && now <= en;
-            return (
-              <div key={s.id} className={`tl ${live ? "now" : ""}`} style={{ opacity: now > en ? 0.5 : 1 }}>
-                <div className="time">{s.start}<small>{s.end}</small></div>
-                <div className="body">
-                  <div className="subj">{s.subject}{live && <span className="chip done" style={{ marginLeft: 8, height: 22 }}>กำลังเรียน</span>}</div>
-                  {(s.topic || s.building || s.room) && <div className="soft small" style={{ marginTop: 2 }}>{[s.topic, WHERE(s.building, s.room)].filter(Boolean).join(" · ")}</div>}
+      {/* วันนี้เรียน — แถวเดียวเลื่อนได้ */}
+      <section className="panel">
+        <div className="ph"><h2>{todays.length ? "วันนี้เรียน" : tomorrows.length ? "พรุ่งนี้เรียน" : "วันนี้"}</h2><button className="ph-more" onClick={() => go("schedule")}>ตาราง ›</button></div>
+        {classes.length ? (
+          <div className="cls-row">
+            {classes.map((s) => {
+              const st = new Date(`${s.date}T${s.start || "00:00"}:00+07:00`).getTime();
+              const en = new Date(`${s.date}T${s.end || s.start || "23:59"}:00+07:00`).getTime();
+              const live = now >= st && now <= en;
+              return (
+                <div key={s.id} className={`cls ${live ? "now" : ""} ${now > en ? "past" : ""}`}>
+                  <span className="cls-t">{s.start}{s.end ? `–${s.end}` : ""}{live && <i>กำลังเรียน</i>}</span>
+                  <b className="clamp2">{s.subject}</b>
+                  {(s.building || s.room) && <span className="cls-w">{WHERE(s.building, s.room)}</span>}
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : <div className="muted small" style={{ padding: "0 6px" }}>{board.schedule.length ? "ไม่มีเรียนวันนี้และพรุ่งนี้ พักผ่อนให้เต็มที่ 🌤️" : "ยังไม่มีตารางเรียนในระบบ"}</div>}
+              );
+            })}
+          </div>
+        ) : <div className="p-empty">{board.schedule.length ? "ไม่มีเรียนวันนี้และพรุ่งนี้ 🌤️" : "ยังไม่มีตารางเรียนในระบบ"}</div>}
+      </section>
+
+      {/* สิ่งที่ต้องกรอก */}
+      {forms.length > 0 && (
+        <section className="panel" ref={todoRef}>
+          <div className="ph">
+            <h2>สิ่งที่ต้องกรอก {todo.length > 0 && <span className="cnt red">{todo.length}</span>}</h2>
+            <span className="progress-mini"><i style={{ width: `${(done.length / forms.length) * 100}%` }} /></span>
+            <span className="ph-note">{done.length}/{forms.length}</span>
+          </div>
+          {todo.length === 0 && <div className="p-empty ok">🎉 กรอกครบทุกอย่างแล้ว</div>}
+          {todo.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} now={now} onClaim={() => claimForm(f.id)} preview={!!data.preview} />)}
+          {done.length > 0 && <button className="p-link" onClick={() => setShowDone((v) => !v)}>✓ กรอกแล้ว {done.length} {showDone ? "▴" : "▾"}</button>}
+          {showDone && done.map((f) => <TodoRow key={f.id} f={f} state="done" now={now} onClaim={async () => {}} preview />)}
+        </section>
+      )}
+
+      {/* ประกาศ — แบ่งตามวันที่ อ่านรวดเดียวจบ */}
+      <section className="panel" ref={annRef}>
+        <div className="ph"><h2>ประกาศ</h2><span className="ph-note">{board.announcements.length} เรื่อง</span></div>
+        {groups.map(({ g, list }) => (
+          <div key={g}>
+            <div className="grp">{g}</div>
+            {list.map((a) => <AnnRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} />)}
+          </div>
+        ))}
+        {all.length === 0 && <div className="p-empty">ยังไม่มีประกาศตอนนี้</div>}
+        {all.length > 6 && <button className="p-link" onClick={() => { haptic(); setMore((v) => !v); }}>{more ? "ย่อ ▴" : `ดูทั้งหมด ${all.length} เรื่อง ▾`}</button>}
+      </section>
 
       {board.daily && board.daily.items.length > 0 && (
-        <div className="daily-plain">
-          <div className="headline"><ISpark width={15} height={15} /> {board.daily.headline}</div>
-          {board.daily.items.map((it, i) => (
-            <button key={i} className="item" onClick={() => { if (it.ref && board.announcements.some((a) => a.id === it.ref)) openAnn(it.ref); }}>
-              <span className="em">{it.emoji}</span>
-              <span className="txt">{it.text}{it.at && <> <DeadlineChip iso={it.at} now={now} /></>}</span>
-            </button>
-          ))}
-        </div>
+        <section className="panel">
+          <div className="ph"><h2><ISpark width={14} height={14} /> สรุปวันนี้</h2></div>
+          <div className="daily-mini">
+            {board.daily.items.map((it, i) => (
+              <button key={i} className="dm" onClick={() => { if (it.ref && board.announcements.some((a) => a.id === it.ref)) openAnn(it.ref); }}>
+                <span>{it.emoji}</span><span>{it.text}</span>
+              </button>
+            ))}
+          </div>
+        </section>
       )}
 
       <button className="fortune-row press" onClick={() => go("fortune")}>
-        <MiniWheel size={46} />
+        <MiniWheel size={40} />
         <div style={{ flex: 1, textAlign: "left" }}>
-          <div className="b">เซียมซีประจำวัน</div>
-          <div className="muted small">{mine.fortune.last_day === today ? `วันนี้เขย่าแล้ว · สะสม ${countOf(mine.fortune.collected)}/200` : "ใบแรกของวันการันตี “ไข่มุก” ขึ้นไป ✨"}</div>
+          <div className="b" style={{ fontSize: 14.5 }}>เซียมซีประจำวัน</div>
+          <div className="muted" style={{ fontSize: 12.5 }}>{mine.fortune.last_day === today ? `วันนี้เขย่าแล้ว · สะสม ${countOf(mine.fortune.collected)}/200` : "ใบแรกของวันการันตี Gold ขึ้นไป ✨"}</div>
         </div>
         <IChevronR width={18} height={18} />
       </button>
@@ -227,17 +227,21 @@ export default function Home({
   );
 }
 
-function FeedRow({ a, now, onOpen }: { a: Ann; now: number; onOpen: () => void }) {
+function AnnRow({ a, now, onOpen }: { a: Ann; now: number; onOpen: () => void }) {
   const c = catOf(a.category);
   const dl = a.deadline_at || a.event_at;
+  const tone = a.deadline_at ? deadlineTone(a.deadline_at, now) : "info";
   return (
-    <button className="frow press" onClick={onOpen}>
-      <span className="fic" style={{ background: `linear-gradient(150deg, ${c.c1}, ${c.c2})` }}>{c.em}</span>
-      <span className="fbody">
-        <span className="ftitle clamp2">{a.pinned ? "📌 " : ""}{a.title}</span>
-        {a.summary && <span className="fsum clamp2">{a.summary}</span>}
-        <span className="fmeta">{dl ? <DeadlineChip iso={dl} now={now} prefix={a.deadline_at ? "ปิด " : ""} /> : null}<span>{a.author || "กรรมการรุ่น"} · {agoTh(a.created_at, now)}</span></span>
+    <button className={`arow press ${tone === "urgent" ? "hot" : ""}`} onClick={onOpen}>
+      <span className="a-ic" style={{ background: `linear-gradient(150deg, ${c.c1}, ${c.c2})` }}>{c.em}</span>
+      <span className="a-b">
+        <span className="a-t clamp2">{a.title}</span>
+        <span className="a-m">
+          {dl ? <DeadlineChip iso={dl} now={now} prefix={a.deadline_at ? "ปิด " : ""} /> : null}
+          <span>{a.author || "กรรมการรุ่น"} · {agoTh(a.created_at, now)}</span>
+        </span>
       </span>
+      <IChevronR width={15} height={15} />
     </button>
   );
 }
@@ -246,28 +250,27 @@ function TodoRow({ f, state, now, onClaim, preview }: { f: AppData["board"]["for
   const [busy, setBusy] = useState(false);
   const isDone = state === "done";
   return (
-    <div className={`frow todo ${isDone ? "done" : ""}`}>
+    <div className={`trow ${isDone ? "done" : ""}`}>
       <button className={`check ${isDone ? "on" : state === "claimed" ? "half" : ""}`} disabled={isDone || state === "claimed" || preview || busy} aria-label="ฉันกรอกแล้ว"
         onClick={async () => { haptic(); setBusy(true); await onClaim(); setBusy(false); }}>
-        {isDone || state === "claimed" ? <ICheck width={16} height={16} /> : null}
+        {isDone || state === "claimed" ? <ICheck width={14} height={14} /> : null}
       </button>
-      <span className="fbody">
-        <span className="ftitle">{f.name}</span>
-        {f.description && !isDone && <span className="fsum clamp2">{f.description}</span>}
-        <span className="fmeta">
+      <span className="a-b">
+        <span className="a-t clamp2">{f.name}</span>
+        <span className="a-m">
           {state === "claimed" ? <span className="chip violet">รอกรรมการยืนยัน</span> : !isDone && f.deadline_at ? <DeadlineChip iso={f.deadline_at} now={now} prefix="ปิด " /> : null}
-          {!isDone && state !== "claimed" && <span>กรอกแล้วแตะวงกลม</span>}
+          {!isDone && state !== "claimed" && <span>ทำแล้วแตะวงกลม</span>}
         </span>
       </span>
-      {!isDone && f.link && <a className="btn sm" href={f.link} target="_blank" rel="noopener noreferrer"><ILink width={14} height={14} />กรอก</a>}
+      {!isDone && f.link && <a className="go-btn" href={f.link} target="_blank" rel="noopener noreferrer">กรอก</a>}
     </div>
   );
 }
 
 function Countdown({ iso, now }: { iso: string; now: number }) {
   const c = countdownParts(iso, now);
-  if (c.d > 0) return <>{c.d} วัน {String(c.h).padStart(2, "0")}:{String(c.m).padStart(2, "0")}</>;
-  return <>{String(c.h).padStart(2, "0")}:{String(c.m).padStart(2, "0")}:{String(c.s).padStart(2, "0")}</>;
+  const cell = (v: number, l: string) => <span className="cd-cell"><b>{String(v).padStart(2, "0")}</b><small>{l}</small></span>;
+  return <span className="cd-digits">{cell(c.d, "วัน")}{cell(c.h, "ชม.")}{cell(c.m, "นาที")}{cell(c.s, "วิ")}</span>;
 }
 
 function countOf(b64: string): number {

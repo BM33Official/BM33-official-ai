@@ -45,7 +45,7 @@ export const maxDuration = 60;
 const CONFIG_KEYS: ConfigKey[] = [
   "gemini_model", "approver_line_ids", "payment_info", "payment_link", "finance_sheet_link",
   "red_zone_size", "reminder_plan", "portal_notice", "semester_label", "president_student_id",
-  "ai_budget_usd", "ai_price_json", "ai_user_daily_cap", "linktree_url", "payment_account_name", "payment_account_no", "slip_auto_approve",
+  "ai_budget_usd", "ai_price_json", "ai_user_daily_cap", "linktree_url", "payment_account_name", "payment_account_no", "slip_auto_approve", "usd_thb",
 ];
 
 export async function POST(req: Request) {
@@ -75,6 +75,20 @@ export async function POST(req: Request) {
         return j({});
       }
 
+      case "form.approveAll": {
+        const f = await getForm(String(body.id));
+        if (!f) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+        const { confirmAllClaims } = await import("@/lib/bc/status");
+        const n = await confirmAllClaims(f.form_id, by);
+        if (body.trust === true) await updateForm(f, { trust_claims: "1" });
+        return j({ n });
+      }
+      case "form.trust": {
+        const f = await getForm(String(body.id));
+        if (!f) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+        await updateForm(f, { trust_claims: body.on === true ? "1" : "" });
+        return j({});
+      }
       case "form.remind": {
         const f = await getForm(String(body.id));
         if (!f) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
@@ -225,6 +239,11 @@ export async function POST(req: Request) {
       case "outbox.approve": {
         const r = await approveAndSend(String(body.id ?? ""), `web:${by}`);
         return NextResponse.json({ ok: r.ok, count: r.count, error: r.error });
+      }
+      case "outbox.digestNow": {
+        const { queueDailyDigest } = await import("@/lib/bc/digest");
+        const r = await queueDailyDigest(Date.now(), { force: true });
+        return j({ code: r.item?.code ?? "", people: r.people, items: r.items });
       }
       case "outbox.reject":
         return NextResponse.json({ ok: await rejectOutbox(String(body.id ?? ""), `web:${by}`) });

@@ -20,6 +20,7 @@ export default function PortalApp() {
   const { phase, data } = app;
   const [tab, setTab] = useState<TabKey>("home");
   const [meSection, setMeSection] = useState<string | undefined>();
+  const [homeFocus, setHomeFocus] = useState<string | undefined>();
   const [openId, setOpenId] = useState<string | null>(null);
   const [energy, setEnergy] = useState(0);
   const [toast, setToastRaw] = useState({ t: "", n: 0 });
@@ -38,6 +39,8 @@ export default function PortalApp() {
       const t = (TAB_ALIAS[raw] ?? raw) as TabKey;
       if (t && TABS.some((x) => x.key === t)) setTab(t);
       if (raw === "fees" || raw === "zone") setMeSection(raw);
+      const focus = u.searchParams.get("focus") ?? inner.get("focus");
+      if (focus) setHomeFocus(focus);
       const ann = u.searchParams.get("a") ?? inner.get("a");
       if (ann) setOpenId(ann);
     };
@@ -103,14 +106,14 @@ export default function PortalApp() {
 
       <main className="shell">
         <section ref={(el) => { screens.current.home = el; }} className={`screen ${tab === "home" ? "active" : ""}`} aria-hidden={tab !== "home"}>
-          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} />
+          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} focus={homeFocus} onFocused={() => setHomeFocus(undefined)} />
         </section>
         <section ref={(el) => { screens.current.schedule = el; }} className={`screen ${tab === "schedule" ? "active" : ""}`} aria-hidden={tab !== "schedule"}>
           <Schedule data={data} active={tab === "schedule"} />
         </section>
         <section ref={(el) => { screens.current.fortune = el; }} className={`screen ${tab === "fortune" ? "active" : ""}`} aria-hidden={tab !== "fortune"}>
           <FortuneScreen
-            sid={data.mine.me.sid} nickname={data.mine.me.nickname} server={data.mine.fortune}
+            sid={data.mine.me.sid} nickname={data.mine.me.nickname} server={data.mine.fortune} board={data.board.fortune}
             active={tab === "fortune"} onEnergy={setEnergy} api={app.api} liff={app.liff} preview={app.isPreview} toast={setToast}
           />
         </section>

@@ -14,8 +14,8 @@ import { feeStatusFor } from "@/lib/bc/fees";
 import { formStatesFor } from "@/lib/bc/status";
 import { ranking } from "@/lib/bc/academic";
 import { drawsForStudent, readDraws, drawPhase, drawIds } from "@/lib/bc/draws";
-import { getFortune } from "@/lib/bc/fortune";
-import { dayDiff } from "@/lib/time";
+import { getFortune, fortuneBoard } from "@/lib/bc/fortune";
+import { dayDiff, bkkDayKey } from "@/lib/time";
 import { fixtureEnabled, applyFixture } from "@/lib/app/fixture";
 
 export interface BoardAnnouncement {
@@ -26,8 +26,8 @@ export interface BoardAnnouncement {
 
 async function buildBoard() {
   const now = Date.now();
-  const [ann, forms, sched, exams, daily, committee, cfg, draws] = await Promise.all([
-    liveAnnouncements(), readForms(), liveSchedule(), liveUniExams(), currentDaily(), readCommittee(), getConfig(), readDraws(),
+  const [ann, forms, sched, exams, daily, committee, cfg, draws, rosterRows] = await Promise.all([
+    liveAnnouncements(), readForms(), liveSchedule(), liveUniExams(), currentDaily(), readCommittee(), getConfig(), readDraws(), readRoster(),
   ]);
   const announcements: BoardAnnouncement[] = ann.map((a) => ({
     id: a.id, title: a.title, summary: a.summary, body: a.body, author: a.author, author_role: a.author_role,
@@ -55,6 +55,7 @@ async function buildBoard() {
     payment: { info: cfg.payment_info ?? "", link: cfg.payment_link ?? "" },
     semester: cfg.semester_label ?? "",
     draws: publicDraws,
+    fortune: await fortuneBoard(bkkDayKey(now), (sid) => { const r = rosterRows.find((x) => x.student_id === sid); return r?.nickname || r?.full_name || "เพื่อน"; }, Number(cfg.fortune_pool_base) || 0).catch(() => ({ jackpots: [], pool: 0, players: 0, total: 0 })),
   };
 }
 

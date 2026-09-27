@@ -49,6 +49,28 @@ export function RolePassword({ role, label, enabled }: { role: "academic" | "fin
   );
 }
 
+// งบ AI กรอกเป็นบาท (เก็บเป็นดอลลาร์ตามที่ Google คิดเงิน)
+export function BudgetBaht({ usd, rate }: { usd: number; rate: number }) {
+  const [thb, setThb] = useState(String(Math.round(usd * rate)));
+  const [r, setR] = useState(String(rate));
+  const [msg, setMsg] = useState("");
+  async function save() {
+    const rt = Number(r) > 0 ? Number(r) : 33;
+    const a = await act("settings.set", { key: "usd_thb", value: String(rt) });
+    const b = await act("settings.set", { key: "ai_budget_usd", value: (Number(thb) / rt).toFixed(2) });
+    setMsg(a.ok && b.ok ? "บันทึกแล้ว ✅" : "บันทึกไม่ได้");
+  }
+  return (
+    <div className="grid g2">
+      <div className="field"><label>งบ AI ต่อเดือน (บาท)</label><input type="number" value={thb} onChange={(e) => setThb(e.target.value)} /><div className="hint">ใช้เกิน 80% → โหมดประหยัด · ครบ 100% → ตอบจากกฎ/แคชอย่างเดียวจนขึ้นเดือนใหม่</div></div>
+      <div className="field"><label>อัตราแลกเปลี่ยน (บาท / 1 ดอลลาร์)</label>
+        <div className="row" style={{ flexWrap: "nowrap" }}><input type="number" value={r} onChange={(e) => setR(e.target.value)} /><button className="btn-sm btn-primary" onClick={save}>บันทึก</button></div>
+        {msg && <div className="hint">{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
 export function AccessLinks() {
   const [links, setLinks] = useState<{ finance?: string | null; academic?: string | null } | null>(null);
   const [copied, setCopied] = useState("");
@@ -123,11 +145,11 @@ export function RichMenuPanel() {
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <b>เมนู LINE v3 (6 ปุ่มสีต่างกัน + แถบถาม AI)</b>
+        <b>เมนู LINE v4</b>
         <span className={`badge ${st?.isDefault ? "b-ok" : st?.ours ? "b-warn" : "b-muted"}`}>{st ? (st.isDefault ? "ทุกคนใช้เมนูใหม่แล้ว" : st.ours ? "สร้างแล้ว · ยังไม่เปิดให้ทุกคน" : "ยังไม่สร้าง") : "…"}</span>
       </div>
-      <img src="/rich-menu-v3.jpg" alt="rich menu" style={{ width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 10, border: "1px solid var(--line)" }} />
-      <p className="hint">ประกาศ · สิ่งที่ต้องกรอก · ตารางเรียน · ของฉัน (เงินรุ่น) · เซียมซี · LinkTree วิชาการ · แถบล่าง “ถาม AI” — ลองกับบัญชีตัวเองก่อน แล้วค่อยเปิดให้ทุกคน</p>
+      <img src="/rich-menu-v4.jpg" alt="rich menu" style={{ width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 10, border: "1px solid var(--line)" }} />
+      <p className="hint">หน้าหลัก (ปุ่มใหญ่) · ประกาศ + สิ่งที่ต้องกรอก · ของฉัน · เซียมซี · ถามบอท · แถบล่าง LinkTree วิชาการ — ลองกับบัญชีตัวเองก่อน แล้วค่อยเปิดให้ทุกคน</p>
       <div className="row">
         {!st?.ours && <button className="btn-primary btn-sm" disabled={busy} onClick={() => run("richmenu.create")}>สร้างเมนู</button>}
         {st?.ours && <button className="btn-sm" disabled={busy} onClick={() => run("richmenu.linkMe")}>ลองใช้เฉพาะบัญชีฉัน</button>}

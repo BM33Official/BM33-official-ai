@@ -49,6 +49,24 @@ export function audienceLabel(audience: string): string {
   return "ทุกคนที่ลงทะเบียน";
 }
 
+// ช่องในชีตเก็บได้ ≤ 50,000 ตัวอักษร — ข้อความเฉพาะคน 100 คนเกินแน่ ๆ -> gzip+base64 เมื่อยาว
+export function packMessages(v: unknown): string {
+  const raw = JSON.stringify(v);
+  if (raw.length < 40_000) return raw;
+  const { gzipSync } = require("node:zlib") as typeof import("node:zlib");
+  const packed = JSON.stringify({ gz: gzipSync(Buffer.from(raw, "utf8"), { level: 9 }).toString("base64") });
+  if (packed.length > 49_000) throw new Error(`ข้อความยาวเกินเก็บได้ (${packed.length} ตัวอักษรหลังบีบอัด)`);
+  return packed;
+}
+export function unpackMessages(s: string): unknown {
+  const v = JSON.parse(s || "[]");
+  if (v && typeof v === "object" && !Array.isArray(v) && typeof v.gz === "string") {
+    const { gunzipSync } = require("node:zlib") as typeof import("node:zlib");
+    return JSON.parse(gunzipSync(Buffer.from(v.gz, "base64")).toString("utf8"));
+  }
+  return v;
+}
+
 export async function createOutbox(input: {
   kind: string; ref_id?: string; title: string; audience: string; messages: Msg[]; preview: string; expires_at?: string; notify?: boolean;
   // ข้อความเฉพาะคน (key = student id) — เช่น เตือน red zone / เงินค้างที่ใส่ยอดของแต่ละคน
@@ -65,7 +83,7 @@ export async function createOutbox(input: {
     ref_id: input.ref_id ?? "",
     title: input.title,
     audience: input.audience,
-    messages: input.perRecipient ? JSON.stringify({ per: input.perRecipient }) : JSON.stringify(input.messages.slice(0, 5)),
+    messages: input.perRecipient ? packMessages({ per: input.perRecipient }) : packMessages(input.messages.slice(0, 5)),
     preview: input.preview.slice(0, 4000),
     status: "pending",
     code: await nextCode(),
@@ -143,7 +161,7 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
   let messages: Msg[] = [];
   let per: Record<string, Msg[]> | null = null;
   try {
-    const v = JSON.parse(item.messages || "[]");
+    const v = unpackMessages(item.messages) as Msg[] | { per?: Record<string, Msg[]> };
     if (Array.isArray(v)) messages = v; else if (v && v.per) per = v.per;
   } catch { /* ignore */ }
   if (!messages.length && !per) return { ok: false, count: 0, error: "ไม่มีข้อความ", item };

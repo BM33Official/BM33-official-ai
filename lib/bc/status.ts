@@ -121,3 +121,12 @@ export async function formStatesFor(studentId: string): Promise<{ form: FormDef;
   }
   return out;
 }
+
+// ยืนยัน "กรอกแล้ว" ทุกคนที่กดไว้ของฟอร์มนี้ทีเดียว (อ่านสด 1 ครั้ง แล้วแก้ทีละแถว)
+export async function confirmAllClaims(formId: string, by = "admin"): Promise<number> {
+  const rows = (await readOverlay(true)).filter((o) => o.form_id === formId && o.state === "claimed");
+  for (const o of rows) {
+    if (o.__row) await patchRecord("status", o.__row, o as never, { state: "confirmed", source: `bulk:${by}`, updated_at: nowISO() });
+  }
+  return rows.length;
+}

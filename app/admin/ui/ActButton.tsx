@@ -3,8 +3,9 @@
 import { useState, type ReactNode } from "react";
 import { act } from "./api";
 
-export default function ActButton({ action, payload, children, confirmText, className = "btn-sm", done }: {
-  action: string; payload?: Record<string, unknown>; children: ReactNode; confirmText?: string; className?: string; done?: (r: Record<string, unknown>) => string;
+// doneText: ข้อความหลังสำเร็จ (ใส่ {code} {n} {count} ได้) — ว่าง = รีโหลดหน้า · ต้องเป็น string (ส่งจาก server component ได้)
+export default function ActButton({ action, payload, children, confirmText, className = "btn-sm", doneText }: {
+  action: string; payload?: Record<string, unknown>; children: ReactNode; confirmText?: string; className?: string; doneText?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -16,8 +17,7 @@ export default function ActButton({ action, payload, children, confirmText, clas
         const r = await act(action, payload);
         setBusy(false);
         if (!r.ok) { setMsg(String(r.error ?? "ไม่สำเร็จ")); return; }
-        const m = done?.(r);
-        if (m) setMsg(m); else window.location.reload();
+        if (doneText) setMsg(doneText.replace(/\{(\w+)\}/g, (_, k) => String(r[k] ?? ""))); else window.location.reload();
       }}>{busy ? "…" : children}</button>
       {msg && <span className="hint">{msg}</span>}
     </span>

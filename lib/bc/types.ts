@@ -45,7 +45,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "form_id", "name", "type", "response_sheet_id", "response_tab",
     "id_column", "done_condition", "access", "created_at",
     "deadline_at", "link", "description", "status",
-    "source", "announcement_id",
+    "source", "announcement_id", "trust_claims",
   ],
   status: ["student_id", "form_id", "state", "source", "updated_at", "note"],
   broadcasts: [
@@ -88,7 +88,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "id", "kind", "ref_id", "title", "audience", "messages", "preview",
     "status", "code", "created_at", "decided_at", "sent_at", "result", "expires_at",
   ],
-  fortunes: ["student_id", "pulls", "collected", "streak", "last_day", "best", "pity", "updated_at"],
+  fortunes: ["student_id", "pulls", "collected", "streak", "last_day", "best", "pity", "updated_at", "jackpot_at", "jackpots"],
   chatlog: ["ts", "channel", "student_id", "nickname", "question", "kind", "reply", "model", "ms", "tokens"],
   usage: ["ts", "feature", "model", "prompt", "cached", "output", "usd", "who"],
   slips: [
@@ -168,6 +168,7 @@ export interface FormDef {
   status?: string; // "" | open | closed | deleted
   source?: string; // "" (เพิ่มเอง) | auto (สร้างจากประกาศอัตโนมัติ)
   announcement_id?: string;
+  trust_claims?: string; // "1" = กด "กรอกแล้ว" ในแอป = เสร็จเลย ไม่ต้องรอแอดมินยืนยัน
 }
 
 export type StatusState = "done" | "claimed" | "confirmed" | "none";
@@ -382,6 +383,8 @@ export interface FortuneRec {
   best: string; // tier สูงสุดที่เคยได้
   pity: string;
   updated_at: string;
+  jackpot_at?: string; // ISO เวลาแตกแจ็กพอตล่าสุด (โชว์ชื่อในหอเกียรติยศวันนั้น)
+  jackpots?: string; // จำนวนครั้งที่แตก
 }
 
 export interface CommitteeRec {

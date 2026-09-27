@@ -55,6 +55,13 @@ export interface BudgetState {
   budget: number; spent: number; pct: number; mode: BudgetMode; projected: number;
   today: number; calls: number; byFeature: Record<string, { usd: number; calls: number }>; byDay: { day: string; usd: number }[];
   avgAnswer: number; cap: number;
+  rate: number; // บาทต่อดอลลาร์ (config usd_thb) — หน้าเว็บแสดงเป็นบาททั้งหมด
+}
+
+// แสดงเงินเป็นบาท (Gemini คิดเงินเป็นดอลลาร์)
+export function baht(usd: number, rate: number, digits = 2): string {
+  const v = usd * rate;
+  return `฿${v.toLocaleString("en-US", { minimumFractionDigits: v < 10 ? digits : 0, maximumFractionDigits: v < 10 ? digits : 0 })}`;
 }
 
 export async function budgetState(): Promise<BudgetState> {
@@ -82,6 +89,7 @@ export async function budgetState(): Promise<BudgetState> {
     budget, spent, pct, mode, projected, today: byDayMap.get(todayKey) ?? 0, calls: rows.length, byFeature,
     byDay: [...byDayMap].sort((a, b) => a[0].localeCompare(b[0])).map(([d, usd]) => ({ day: d, usd })),
     avgAnswer: ans ? ans.usd / ans.calls : 0, cap,
+    rate: Number(cfg.usd_thb) > 0 ? Number(cfg.usd_thb) : 33,
   };
 }
 

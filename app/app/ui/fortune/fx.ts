@@ -40,6 +40,115 @@ export const sound = {
     src.connect(f).connect(g).connect(a.destination);
     src.start(t);
   },
+  // ── เสียงคัตซีน ──
+  noise(len: number): AudioBufferSourceNode | null {
+    const a = audio(); if (!a) return null;
+    const buf = a.createBuffer(1, Math.max(1, a.sampleRate * len), a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = a.createBufferSource(); src.buffer = buf; return src;
+  },
+  heartbeat(intensity = 1) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    for (const [dt, f, v] of [[0, 62, 0.55], [0.17, 50, 0.4]] as [number, number, number][]) {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = "sine"; o.frequency.setValueAtTime(f * 1.6, t + dt); o.frequency.exponentialRampToValueAtTime(f, t + dt + 0.09);
+      g.gain.setValueAtTime(0.0001, t + dt); g.gain.exponentialRampToValueAtTime(v * intensity, t + dt + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.22);
+      o.connect(g).connect(a.destination); o.start(t + dt); o.stop(t + dt + 0.25);
+    }
+  },
+  drum(power = 1) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(38, t + 0.35);
+    g.gain.setValueAtTime(0.7 * power, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.65);
+    const n = this.noise(0.25); if (!n) return;
+    const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 900;
+    const ng = a.createGain(); ng.gain.setValueAtTime(0.35 * power, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    n.connect(f).connect(ng).connect(a.destination); n.start(t);
+  },
+  riser(dur: number) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), o2 = a.createOscillator(), f = a.createBiquadFilter(), g = a.createGain();
+    o.type = "sawtooth"; o2.type = "sawtooth";
+    o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(420, t + dur);
+    o2.frequency.setValueAtTime(91.5, t); o2.frequency.exponentialRampToValueAtTime(424, t + dur);
+    f.type = "lowpass"; f.frequency.setValueAtTime(250, t); f.frequency.exponentialRampToValueAtTime(4200, t + dur); f.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + dur * 0.85); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
+    o.connect(f); o2.connect(f); f.connect(g).connect(a.destination);
+    o.start(t); o2.start(t); o.stop(t + dur + 0.1); o2.stop(t + dur + 0.1);
+  },
+  upgrade(step: number) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    const base = 440 * Math.pow(2, (step * 3) / 12);
+    for (const [m, v] of [[1, 0.16], [1.5, 0.08], [2, 0.07], [3, 0.03]] as [number, number][]) {
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = m === 1 ? "triangle" : "sine"; o.frequency.value = base * m;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.1);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + 1.2);
+    }
+    const n = this.noise(0.4); if (!n) return;
+    const f = a.createBiquadFilter(); f.type = "highpass"; f.frequency.value = 5000;
+    const ng = a.createGain(); ng.gain.setValueAtTime(0.08, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    n.connect(f).connect(ng).connect(a.destination); n.start(t);
+  },
+  tease() {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = "triangle"; o.frequency.setValueAtTime(900, t); o.frequency.exponentialRampToValueAtTime(260, t + 0.35);
+    g.gain.setValueAtTime(0.1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+    o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.42);
+  },
+  boom() {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    this.drum(1.3);
+    const n = this.noise(1.6); if (!n) return;
+    const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.setValueAtTime(3000, t); f.frequency.exponentialRampToValueAtTime(200, t + 1.5);
+    const g = a.createGain(); g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    n.connect(f).connect(g).connect(a.destination); n.start(t);
+  },
+  fanfare(rank: number) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    const t0 = a.currentTime + 0.05;
+    const chords = rank >= 5
+      ? [[523.25, 659.25, 783.99], [587.33, 739.99, 880], [659.25, 830.61, 987.77], [783.99, 987.77, 1174.66, 1567.98]]
+      : [[523.25, 659.25, 783.99], [659.25, 783.99, 1046.5]];
+    chords.forEach((ch, i) => {
+      const t = t0 + i * 0.16, len = i === chords.length - 1 ? 1.8 : 0.3;
+      for (const f of ch) {
+        const o = a.createOscillator(), fl = a.createBiquadFilter(), g = a.createGain();
+        o.type = "sawtooth"; o.frequency.value = f;
+        fl.type = "lowpass"; fl.frequency.setValueAtTime(1200, t); fl.frequency.exponentialRampToValueAtTime(3800, t + 0.08);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.045, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.connect(fl).connect(g).connect(a.destination); o.start(t); o.stop(t + len + 0.05);
+      }
+    });
+  },
+  coins(n = 20) {
+    if (!this.enabled) return;
+    const a = audio(); if (!a) return;
+    for (let i = 0; i < n; i++) {
+      const t = a.currentTime + Math.random() * 1.4;
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = "square"; o.frequency.setValueAtTime(1800 + Math.random() * 1800, t); o.frequency.setValueAtTime(2600 + Math.random() * 1600, t + 0.05);
+      g.gain.setValueAtTime(0.018, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+      o.connect(g).connect(a.destination); o.start(t); o.stop(t + 0.18);
+    }
+  },
   chime(tier: TierKey) {
     if (!this.enabled) return;
     const a = audio(); if (!a) return;

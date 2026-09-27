@@ -76,6 +76,12 @@ Nothing reaches classmates until someone approves (LINE `approve 123` / `approve
 `lib/bc/auth.ts` — cookie `<role>.<hmac(role|passwordHash)>`. admin = env `ADMIN_PANEL_PASSWORD`; academic/finance = hash in BC_config (Settings page) or env. `roleCan()` restricts action prefixes (academic: `academic.*`, `draw.*`; finance: `finance.*`).
 Magic links: `/admin/k/<role>.<hmac(link|role|credHash)[:32]>` sets the cookie for 60 days (Settings → ลิงก์เข้าตรง). Changing the password kills old links.
 
+## Reminders (v4)
+`runReminderCron` → `queueDailyDigest` once per day (≥08:00, ref `digest:YYYY-MM-DD`): items due within the `reminder_plan` window (forms, announcements without forms, uni exams ≤3 d); each verified member gets ONE text + link carousel with only their undone items (claimed counts as done). Outbox payloads >40K chars are gzip+base64 (`packMessages`/`unpackMessages`). Manual per-item buttons still exist (form/announcement remind). Forms with `trust_claims=1`: app "กรอกแล้ว" = confirmed immediately.
+
+## Fortune (v4)
+Client-side roll (`lib/fortunes/data.ts`: tiers a–f = Bronze…JACKPOT, `luckyHour(day)` ×2 for Platinum+, streak +5%/day ≤35%, pity 30 → Platinum+). `Cutscene.tsx` plays the unskippable reveal; `WheelArt.ts` pre-renders the dragon wheel layers. Jackpot → `jackpot_at` synced immediately → `fortuneBoard()` in the public board (hall of fame names today + Jackpot Pool = total pulls − `fortune_pool_base`).
+
 ## Finance slips (`lib/bc/slips.ts`)
 Image in DM or app → Gemini vision reads amount/date/receiver/ref → verdict: amount vs owed month(s), receiver vs `payment_account_name/no`, duplicate `bank_ref`, date sanity → `BC_slips` (pending). Finance approves in `/admin/finance` (→ `applyPayments`). `slip_auto_approve=1` auto-approves "ok" slips (default off).
 

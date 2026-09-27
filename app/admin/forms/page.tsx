@@ -1,79 +1,129 @@
-// สิ่งที่ต้องกรอก — AI ดึงจากประกาศให้เอง · หน้านี้ไว้ดูว่าใครยังไม่กรอก แก้ และเพิ่มที่ AI พลาด
-import { ClipboardCheck, Sparkles, Hand, Bell, Link2, PlusCircle } from "lucide-react";
+// สิ่งที่ต้องกรอก — AI ดึงจากประกาศให้เอง · หน้านี้บอกชัด ๆ ว่าใครกรอกแล้ว/ยังไม่กรอก + เตือน + ยืนยันทีเดียว
+import { ClipboardCheck, Sparkles, Bell, Link2, PlusCircle, AlarmClock, CheckCheck, UserX } from "lucide-react";
 import { requireAdmin } from "@/lib/bc/auth";
 import { readForms } from "@/lib/bc/forms";
 import { statusForForm } from "@/lib/bc/status";
 import { readRoster } from "@/lib/bc/roster";
 import { thDateTime, relativeTh } from "@/lib/time";
-import { Head, Ring, Empty } from "../ui/kit";
+import { Head, Ring, Empty, Sq } from "../ui/kit";
 import AddForm from "../ui/AddForm";
 import FormEditRow from "../ui/FormEditRow";
 import ActButton from "../ui/ActButton";
+import TrustSwitch from "../ui/TrustSwitch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
+type P = { sid: string; no: number; name: string };
+
+function Names({ people, tone }: { people: P[]; tone: "red" | "orange" | "green" | "gray" }) {
+  if (!people.length) return <span className="hint">—</span>;
+  return <div className="namechips">{people.map((p) => <span key={p.sid} className={`nc nc-${tone}`}><b>{p.no}</b>{p.name}</span>)}</div>;
+}
 
 export default async function Forms() {
   await requireAdmin();
   const [forms, roster] = await Promise.all([readForms(true), readRoster()]);
-  const nick = new Map(roster.map((r) => [r.student_id, r.nickname || r.full_name]));
-  const rows = await Promise.all(forms.map(async (f) => ({ f, st: await statusForForm(f) })));
+  const person = (sid: string): P => { const r = roster.find((x) => x.student_id === sid); return { sid, no: Number(sid.slice(-3)), name: r?.nickname || r?.full_name || sid }; };
+  const byNo = (a: P, b: P) => a.no - b.no;
   const now = Date.now();
-  const open = rows.filter(({ f }) => f.status !== "closed").sort((a, b) => (a.f.deadline_at || "9").localeCompare(b.f.deadline_at || "9"));
-  const closed = rows.filter(({ f }) => f.status === "closed");
+  const rows = await Promise.all(forms.filter((f) => f.status !== "deleted").map(async (f) => {
+    const st = await statusForForm(f).catch(() => []);
+    const reg = new Set(st.map((s) => digits(s.member.matched_student_id)));
+    const pick = (k: string) => st.filter((s) => s.state === k).map((s) => person(digits(s.member.matched_student_id))).sort(byNo);
+    return {
+      f, done: pick("done"), claimed: pick("claimed"), todo: pick("none"),
+      unreg: roster.filter((r) => !reg.has(r.student_id)).map((r) => person(r.student_id)).sort(byNo),
+      left: f.deadline_at ? new Date(f.deadline_at).getTime() - now : Infinity,
+    };
+  }));
+  const open = rows.filter((r) => r.f.status !== "closed").sort((a, b) => a.left - b.left);
+  const urgent = open.filter((r) => r.left > 0 && r.left < 3 * 86_400_000 && r.todo.length);
+  const rest = open.filter((r) => !urgent.includes(r));
+  const closed = rows.filter((r) => r.f.status === "closed");
+  const missing = open.reduce((a, r) => a + r.todo.length, 0);
+  const waiting = open.reduce((a, r) => a + r.claimed.length, 0);
 
-  const card = ({ f, st }: (typeof rows)[number]) => {
-    const done = st.filter((s) => s.state === "done").length;
-    const claimed = st.filter((s) => s.state === "claimed").length;
-    const late = f.deadline_at && new Date(f.deadline_at).getTime() < now;
-    const soon = f.deadline_at && !late && new Date(f.deadline_at).getTime() - now < 2 * 86_400_000;
-    const sorted = [...st].sort((a, b) => digits(a.member.matched_student_id).localeCompare(digits(b.member.matched_student_id)));
+  const card = ({ f, done, claimed, todo, unreg, left }: (typeof rows)[number]) => {
+    const total = done.length + claimed.length + todo.length;
+    const late = left < 0;
+    const soon = left >= 0 && left < 3 * 86_400_000;
     return (
       <div key={f.form_id} className="card fade-in" style={f.status === "closed" ? { opacity: 0.6 } : undefined}>
         <div className="row" style={{ gap: 16, flexWrap: "nowrap", alignItems: "flex-start" }}>
-          <Ring value={done} max={st.length || 1} size={78} stroke={9} tone={done === st.length && st.length ? "green" : late ? "red" : "blue"} label={done} sub={`/${st.length}`} />
+          <Ring value={done.length} max={total || 1} size={76} stroke={9} tone={total && done.length === total ? "green" : late ? "red" : soon ? "orange" : "blue"} label={done.length} sub={`/${total}`} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="row" style={{ gap: 6, marginBottom: 4 }}>
               {f.source === "auto" ? <span className="badge b-purple"><Sparkles size={12} /> AI ดึงจากประกาศ</span> : <span className="badge">เพิ่มเอง</span>}
-              <span className="badge">{f.access === "auto" ? "เช็กจากชีตคำตอบ" : "เพื่อนกด “กรอกแล้ว” เอง"}</span>
+              <span className="badge">{f.access === "auto" ? "เช็กจากชีตคำตอบ" : "เพื่อนกดเอง"}</span>
               {f.status === "closed" && <span className="badge">ปิดแล้ว</span>}
             </div>
             <h3 style={{ fontSize: 19, margin: "2px 0" }}>{f.name}</h3>
-            <div className="hint" style={{ color: late ? "var(--red-ink)" : soon ? "var(--orange-ink)" : undefined, fontWeight: late || soon ? 700 : undefined }}>
+            <div className="hint" style={{ color: late ? "var(--red-ink)" : soon ? "var(--orange-ink)" : undefined, fontWeight: late || soon ? 800 : undefined }}>
               {f.deadline_at ? `ปิด ${thDateTime(f.deadline_at)} · ${relativeTh(f.deadline_at)}` : "ไม่มีเดดไลน์"}
               {f.link && <> · <a href={f.link} target="_blank" rel="noreferrer"><Link2 size={13} /> เปิดฟอร์ม</a></>}
             </div>
           </div>
+          {f.access !== "auto" && <TrustSwitch id={f.form_id} on={f.trust_claims === "1"} />}
         </div>
-        {st.length > 0 && (
-          <div className="dots" style={{ marginTop: 14 }}>
-            {sorted.map((s) => {
-              const id = digits(s.member.matched_student_id);
-              return <span key={id} className={`d ${s.state === "done" ? "ok" : s.state === "claimed" ? "warn" : "none"}`} title={`${id.slice(-3)} ${nick.get(id) ?? ""} · ${s.state === "done" ? "กรอกแล้ว" : s.state === "claimed" ? "บอกว่ากรอกแล้ว (รอยืนยัน)" : "ยังไม่กรอก"}`}>{id.slice(-3).replace(/^0+/, "")}</span>;
-            })}
+
+        <div className="who">
+          <div className="who-col">
+            <div className="who-h"><span className="dot red" />ยังไม่กรอก <b>{todo.length}</b>
+              {f.status !== "closed" && todo.length > 0 && !late && (
+                <ActButton action="form.remind" payload={{ id: f.form_id }} className="btn-sm btn-primary" confirmText={`ร่างข้อความเตือน ${todo.length} คนที่ยังไม่กรอก? (ไปรออนุมัติก่อน ยังไม่ส่ง)`}
+                  doneText="ร่างแล้ว #{code} → รออนุมัติ"><Bell size={14} /> เตือน {todo.length} คนนี้</ActButton>
+              )}
+            </div>
+            <Names people={todo} tone="red" />
           </div>
-        )}
-        <div className="row between" style={{ marginTop: 14 }}>
-          <div className="legend"><span><i style={{ background: "#34c759" }} />กรอกแล้ว {done}</span>{claimed > 0 && <span><i style={{ background: "#ff9500" }} />รอยืนยัน {claimed}</span>}<span><i style={{ background: "#e5e5ea" }} />ยังไม่กรอก {st.length - done - claimed}</span></div>
-          <div className="row" style={{ gap: 8 }}>
-            {f.status !== "closed" && st.length - done > 0 && (
-              <ActButton action="form.remind" payload={{ id: f.form_id }} className="btn-sm btn-primary" confirmText={`ร่างข้อความเตือน ${st.length - done} คนที่ยังไม่กรอก? (ยังไม่ส่ง — ไปรออนุมัติก่อน)`}
-                done={(r) => `ร่างแล้ว #${r.code} → ไปที่ “รออนุมัติ”`}><Bell size={15} /> เตือนคนที่ยังไม่กรอก</ActButton>
-            )}
-            <FormEditRow id={f.form_id} deadline={f.deadline_at ?? ""} link={f.link ?? ""} description={f.description ?? ""} status={f.status ?? ""} />
-          </div>
+          {claimed.length > 0 && (
+            <div className="who-col">
+              <div className="who-h"><span className="dot orange" />บอกว่ากรอกแล้ว รอยืนยัน <b>{claimed.length}</b>
+                <ActButton action="form.approveAll" payload={{ id: f.form_id }} className="btn-sm btn-green"><CheckCheck size={14} /> ยืนยันทั้งหมด</ActButton>
+                {f.trust_claims !== "1" && f.access !== "auto" && (
+                  <ActButton action="form.approveAll" payload={{ id: f.form_id, trust: true }} className="btn-sm" confirmText="ยืนยันทุกคนตอนนี้ และต่อไปใครกด “กรอกแล้ว” ในงานนี้ นับว่าเสร็จเลยโดยไม่ต้องตรวจ?">ยืนยัน + ต่อไปไม่ต้องตรวจ</ActButton>
+                )}
+              </div>
+              <Names people={claimed} tone="orange" />
+            </div>
+          )}
+          <details className="who-col">
+            <summary className="who-h" style={{ cursor: "pointer" }}><span className="dot green" />กรอกแล้ว <b>{done.length}</b> <span className="hint">แตะเพื่อดูชื่อ</span></summary>
+            <Names people={done} tone="green" />
+          </details>
+          {unreg.length > 0 && (
+            <details className="who-col">
+              <summary className="who-h" style={{ cursor: "pointer" }}><UserX size={14} color="#8e8e93" />ยังไม่ลงทะเบียนแอป <b>{unreg.length}</b> <span className="hint">ระบบติดตามไม่ได้ ต้องบอกเอง</span></summary>
+              <Names people={unreg} tone="gray" />
+            </details>
+          )}
         </div>
-        {claimed > 0 && <div className="hint" style={{ marginTop: 8 }}><Hand size={13} /> สีส้ม = เพื่อนกดว่ากรอกแล้ว ยืนยันได้ที่ “รออนุมัติ”</div>}
+        <div className="row" style={{ justifyContent: "flex-end", marginTop: 10 }}>
+          <FormEditRow id={f.form_id} deadline={f.deadline_at ?? ""} link={f.link ?? ""} description={f.description ?? ""} status={f.status ?? ""} />
+        </div>
       </div>
     );
   };
 
   return (
     <div className="wrap">
-      <Head icon={ClipboardCheck} tone="green" title="สิ่งที่ต้องกรอก" sub="AI เพิ่มให้เองเมื่อเจอประกาศที่มีฟอร์มให้กรอก — เพื่อนเห็นในแอปพร้อมเดดไลน์ · แต่ละช่องคือเพื่อน 1 คน" />
-      {open.length ? <div className="stack">{open.map(card)}</div>
-        : <div className="card"><Empty icon={ClipboardCheck} title="ตอนนี้ไม่มีอะไรต้องกรอก" sub="เมื่อมีประกาศที่ให้กรอกฟอร์ม ระบบจะเพิ่มมาที่นี่เอง" /></div>}
+      <Head icon={ClipboardCheck} tone="green" title="สิ่งที่ต้องกรอก" sub="AI เพิ่มให้เองเมื่อเจอประกาศที่มีฟอร์ม · ดูได้ทันทีว่าใครกรอกแล้ว ใครยังไม่กรอก" />
+      <div className="grid g3" style={{ marginBottom: 18 }}>
+        <div className="card"><div className="bignum">{open.length}</div><div className="hint">งานที่เปิดอยู่</div></div>
+        <div className="card"><div className="bignum" style={{ color: missing ? "var(--red-ink)" : undefined }}>{missing}</div><div className="hint">ช่องที่ยังไม่กรอก (รวมทุกงาน)</div></div>
+        <div className="card"><div className="bignum" style={{ color: waiting ? "var(--orange-ink)" : undefined }}>{waiting}</div><div className="hint">รอคุณยืนยัน</div></div>
+      </div>
+
+      {urgent.length > 0 && (
+        <>
+          <h2 className="row" style={{ gap: 10 }}><Sq icon={AlarmClock} tone="red" /> ใกล้เดดไลน์ (ภายใน 3 วัน)</h2>
+          <div className="stack">{urgent.map(card)}</div>
+        </>
+      )}
+      {rest.length > 0 && <h2 className="row" style={{ gap: 10 }}><Sq icon={ClipboardCheck} tone="green" /> กำลังเปิด</h2>}
+      {rest.length ? <div className="stack">{rest.map(card)}</div>
+        : !urgent.length && <div className="card"><Empty icon={ClipboardCheck} title="ตอนนี้ไม่มีอะไรต้องกรอก" sub="เมื่อมีประกาศที่ให้กรอกฟอร์ม ระบบจะเพิ่มมาที่นี่เอง" /></div>}
 
       <details className="more" style={{ marginTop: 22 }}>
         <summary><PlusCircle size={16} /> AI พลาดไป? เพิ่มเอง</summary>
