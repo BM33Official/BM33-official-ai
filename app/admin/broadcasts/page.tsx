@@ -2,7 +2,9 @@ import { requireAdmin } from "@/lib/bc/auth";
 import { readForms } from "@/lib/bc/forms";
 import { readBroadcasts } from "@/lib/bc/broadcast";
 import Composer from "../ui/Composer";
-import PageHead from "../ui/PageHead";
+import Link from "next/link";
+import { MessageSquareText, ArrowLeft } from "lucide-react";
+import { Head } from "../ui/kit";
 import RowActions from "../ui/RowActions";
 import { bkkDateTime } from "@/lib/bc/format";
 
@@ -27,8 +29,8 @@ export default async function Broadcasts({ searchParams }: { searchParams: { edi
 
   return (
     <div className="wrap">
-      <PageHead icon="📨" title="บรอดแคสต์" desc="ส่งข้อความ LINE ถึงทุกคน หรือเฉพาะคนที่ยังไม่ทำฟอร์ม — ข้อความทั่วไปควรลงเป็น “ประกาศ” บนแอปแทน (ไม่กินโควตา)"
-        steps={["เขียนข้อความ + ดูพรีวิว", "ทดสอบส่งหาตัวเองก่อน", "อนุมัติ → ส่งทันที/ตั้งเวลา"]} />
+      <Head icon={MessageSquareText} tone="line" title="ข้อความ LINE ขั้นสูง" sub="ออกแบบการ์ด/รูป ตั้งเวลา ส่งซ้ำอัตโนมัติ — เรื่องทั่วไปใช้หน้าประกาศ แล้วติ๊ก “ส่ง LINE ด้วย” ง่ายกว่า"
+        right={<Link href="/admin/announcements" className="btn btn-sm"><ArrowLeft size={15} /> กลับไปประกาศ</Link>} />
 
       <Composer forms={formOpts} initial={editing} />
 

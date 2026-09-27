@@ -223,7 +223,7 @@ export async function parseTimetable(parts: Part[], hint: { block?: string; text
     `ตอนนี้: ${nowContextTh()}\nชื่อ block ที่แอดมินระบุ: ${hint.block || "-"}\n${hint.text ? `<ข้อมูลตาราง>\n${hint.text.slice(0, 120_000)}\n</ข้อมูลตาราง>` : "ไฟล์แนบด้านล่าง"}`,
     PARSE_SCHEMA,
     ParseZ as unknown as z.ZodType<ParsedTimetable>,
-    { timeoutMs: 52_000, temperature: 0.2, thinking: "LOW", maxOutputTokens: 32_000, extraParts: parts }
+    { timeoutMs: 52_000, temperature: 0.2, thinking: "LOW", maxOutputTokens: 32_000, extraParts: parts, feature: "timetable" }
   );
   if (!data) throw new Error("อ่านตารางจากไฟล์ไม่สำเร็จ ลองไฟล์ที่ชัดขึ้นหรือแยกเป็นหลายไฟล์");
   data.sessions = data.sessions

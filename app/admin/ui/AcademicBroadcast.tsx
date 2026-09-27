@@ -58,11 +58,11 @@ export default function AcademicBroadcast({ exams }: { exams: ExamLite[] }) {
 
   async function send() {
     if (mode === "doc" && !examId) { setMsg({ t: "เลือกข้อสอบที่มีลิงก์เอกสารก่อนน้า", ok: false }); return; }
-    if (!testMode && !confirm(`ส่งประกาศจริงถึง "${pv?.audience || modeInfo.label}" (${pv?.count ?? 0} คน) เดี๋ยวนี้?`)) return;
+    if (!testMode && !confirm(`ร่างข้อความถึง "${pv?.audience || modeInfo.label}" (${pv?.count ?? 0} คน)?\nยังไม่ส่ง — ไปรอแอดมินกดอนุมัติก่อน`)) return;
     setBusy(true); setMsg(null);
     const r = await act("academic.broadcast", { ...payload(), testMode });
     setBusy(false);
-    if (r.ok) setMsg({ t: `ส่งแล้ว ${r.count} คน${r.testMode ? " · โหมดทดสอบ (ส่งตัวอย่างให้แอดมินเท่านั้น)" : " · ส่งจริงเรียบร้อย ✅"}`, ok: true });
+    if (r.ok) setMsg({ t: r.testMode ? `ส่งตัวอย่างให้แอดมินแล้ว (${r.count} คนจะได้รับ)` : `ร่างแล้ว #${r.code} · ${r.count} คน → รอแอดมินอนุมัติ (แอดมินได้การ์ดใน LINE)`, ok: true });
     else {
       const reason = r.error === "no_doc_link" ? "ข้อสอบนี้ยังไม่มีลิงก์เอกสาร" : r.error === "no_recipients" ? "ไม่มีผู้รับในกลุ่มนี้" : r.error;
       setMsg({ t: `ส่งไม่ได้: ${reason}`, ok: false });
@@ -163,14 +163,14 @@ export default function AcademicBroadcast({ exams }: { exams: ExamLite[] }) {
 
       <div className="row">
         <button className={testMode ? "btn-primary" : "btn-green"} onClick={send} disabled={busy || (pv?.count ?? 0) === 0}>
-          {busy ? "กำลังส่ง…" : testMode ? `🧪 ส่งทดสอบให้แอดมิน` : `📢 ส่งจริงถึง ${pv?.count ?? 0} คน เดี๋ยวนี้`}
+          {busy ? "กำลังส่ง…" : testMode ? `🧪 ส่งทดสอบให้แอดมิน` : `📢 ร่างส่งถึง ${pv?.count ?? 0} คน (รออนุมัติ)`}
         </button>
       </div>
 
       {mode === "doc" && examId && (
         <>
           <hr className="divider" />
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>หรือ ตั้งเวลาส่งอัตโนมัติ (ส่งจริงถึงทุกคน)</label>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>หรือ ตั้งเวลา (ถึงเวลาแล้วระบบร่างไปรออนุมัติ)</label>
           <div className="row">
             <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ maxWidth: 240 }} />
             <button className="btn" onClick={schedule} disabled={busy || !when}>⏰ ตั้งเวลาส่ง</button>

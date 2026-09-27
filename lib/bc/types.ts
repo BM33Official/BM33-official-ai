@@ -24,6 +24,9 @@ export const TABS = {
   outbox: "BC_outbox",
   fortunes: "BC_fortunes",
   chatlog: "BC_chatlog", // บันทึกถาม-ตอบของบอท (แอดมินเท่านั้น; ไม่อยู่ใน snapshot)
+  // ── v3 ──
+  usage: "BC_usage", // ค่าใช้จ่าย AI ต่อครั้ง (ไม่อยู่ใน snapshot)
+  slips: "BC_slips", // สลิปโอนเงินที่สมาชิกส่ง + ผลตรวจ AI (ไม่อยู่ใน snapshot — มีรูป)
 } as const;
 export type TabKey = keyof typeof TABS;
 
@@ -42,6 +45,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "form_id", "name", "type", "response_sheet_id", "response_tab",
     "id_column", "done_condition", "access", "created_at",
     "deadline_at", "link", "description", "status",
+    "source", "announcement_id",
   ],
   status: ["student_id", "form_id", "state", "source", "updated_at", "note"],
   broadcasts: [
@@ -56,6 +60,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "exam_id", "name", "exam_date", "question_count", "not_memorized_ids", "created_at",
     "doc_link", "doc_title", "not_filled_ids", "doc_reminder_at", "doc_reminder_status",
     "doc_reminder_template",
+    "assign_json", "recalled", "check_at", "question_count2",
   ],
   summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at", "schedule_at"],
 
@@ -85,6 +90,11 @@ export const HEADERS: Record<TabKey, string[]> = {
   ],
   fortunes: ["student_id", "pulls", "collected", "streak", "last_day", "best", "pity", "updated_at"],
   chatlog: ["ts", "channel", "student_id", "nickname", "question", "kind", "reply", "model", "ms", "tokens"],
+  usage: ["ts", "feature", "model", "prompt", "cached", "output", "usd", "who"],
+  slips: [
+    "id", "student_id", "month", "amount", "paid_at", "bank_ref", "receiver", "ai_verdict", "ai_note",
+    "status", "image", "created_at", "decided_at", "decided_by", "source",
+  ],
 };
 
 export interface Exam {
@@ -101,6 +111,10 @@ export interface Exam {
   doc_reminder_at: string; // ISO เวลาที่ตั้งให้ส่งเตือนกรอกเอกสารอัตโนมัติ ("" = ไม่ตั้ง)
   doc_reminder_status: string; // "" | pending | sent
   doc_reminder_template: string; // ข้อความที่แก้ไว้สำหรับการส่งตามเวลา ("" = ใช้ค่าเริ่มต้น)
+  assign_json?: string; // {"<student_id>":[ข้อ,...]} — ใครรับผิดชอบจำข้อไหน
+  recalled?: string; // ข้อที่มีคนพิมพ์ลงเอกสารแล้ว (comma)
+  check_at?: string; // เวลาที่ตรวจล่าสุด
+  question_count2?: string; // จำนวนข้อทั้งหมด (จากการตรวจ)
 }
 
 export type OnboardingState = "awaiting_info" | "awaiting_confirm" | "done" | "mismatch";
@@ -151,7 +165,9 @@ export interface FormDef {
   deadline_at?: string; // ISO — โชว์ในแอป + เตือนใกล้เดดไลน์
   link?: string; // ลิงก์ฟอร์มให้สมาชิกกด
   description?: string;
-  status?: string; // "" | open | closed
+  status?: string; // "" | open | closed | deleted
+  source?: string; // "" (เพิ่มเอง) | auto (สร้างจากประกาศอัตโนมัติ)
+  announcement_id?: string;
 }
 
 export type StatusState = "done" | "claimed" | "confirmed" | "none";
@@ -335,6 +351,25 @@ export interface OutboxItem {
   sent_at: string;
   result: string;
   expires_at: string;
+}
+
+export interface Slip {
+  __row?: number;
+  id: string;
+  student_id: string;
+  month: string; // YYYY-MM (เดือนที่จ่าย — สมาชิกเลือก/AI เดา)
+  amount: string; // ยอดที่อ่านได้จากสลิป
+  paid_at: string; // ISO เวลาในสลิป
+  bank_ref: string; // เลขอ้างอิงรายการ (กันสลิปซ้ำ)
+  receiver: string; // ชื่อบัญชีผู้รับที่อ่านได้
+  ai_verdict: string; // ok | check | bad
+  ai_note: string;
+  status: string; // pending | approved | rejected
+  image: string; // data:image/jpeg;base64,... (ย่อแล้ว ≤ ~45KB)
+  created_at: string;
+  decided_at: string;
+  decided_by: string;
+  source: string; // app | line
 }
 
 export interface FortuneRec {

@@ -1,11 +1,11 @@
-// rich menu v2 (6 ปุ่ม) — สร้าง/อัปรูปจากฝั่ง server (token LINE อยู่บน Vercel เท่านั้น)
+// rich menu v3 (6 ปุ่มสีต่างกัน + แถบ "ถาม AI") — สร้าง/อัปรูปจากฝั่ง server (token LINE อยู่บน Vercel เท่านั้น)
 import { messagingApi } from "@line/bot-sdk";
 import { lineClient, lineBlobClient } from "@/lib/line";
 import { getConfigValue, setConfig } from "@/lib/bc/config";
-import def from "@/rich-menu/rich-menu.v2.json";
+import def from "@/rich-menu/rich-menu.v3.json";
 
 export async function richMenuStatus() {
-  const ours = await getConfigValue("rich_menu_v2_id");
+  const ours = await getConfigValue("rich_menu_v3_id");
   let current = "";
   try { current = (await lineClient.getDefaultRichMenuId()).richMenuId; } catch { /* ไม่มี default */ }
   let exists = false;
@@ -17,10 +17,10 @@ export async function createRichMenuV2(origin: string): Promise<string> {
   const st = await richMenuStatus();
   if (st.ours) return st.ours;
   const { richMenuId } = await lineClient.createRichMenu(def as unknown as messagingApi.RichMenuRequest);
-  const img = await fetch(`${origin.replace(/\/$/, "")}/rich-menu-v2.jpg`, { cache: "no-store" });
+  const img = await fetch(`${origin.replace(/\/$/, "")}/rich-menu-v3.jpg`, { cache: "no-store" });
   if (!img.ok) throw new Error("โหลดรูปเมนูไม่ได้");
   await lineBlobClient.setRichMenuImage(richMenuId, new Blob([await img.arrayBuffer()], { type: "image/jpeg" }));
-  await setConfig("rich_menu_v2_id", richMenuId, "created by control center");
+  await setConfig("rich_menu_v3_id", richMenuId, "created by control center");
   return richMenuId;
 }
 

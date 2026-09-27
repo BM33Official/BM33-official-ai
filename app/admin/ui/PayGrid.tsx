@@ -6,7 +6,7 @@ type Cell = "paid" | "yearly" | "waived" | "partial" | "unpaid" | "overdue" | "u
 type Row = { sid: string; nickname: string; name: string; cells: Record<string, Cell> };
 const KIND_OF: Record<Cell, string> = { paid: "monthly", yearly: "yearly", waived: "waived", partial: "partial", unpaid: "", overdue: "", upcoming: "" };
 const MARK: Record<Cell, string> = { paid: "✓", yearly: "ป", waived: "–", partial: "½", unpaid: "", overdue: "!", upcoming: "" };
-const NEXT: Record<string, string> = { "": "monthly", monthly: "waived", waived: "", yearly: "", partial: "monthly" };
+const NEXT: Record<string, string> = { "": "monthly", monthly: "", waived: "", yearly: "", partial: "monthly" }; // ไม่มี "ยกเว้น" แล้ว (ข้อมูลเก่ายังแสดงเป็น –)
 const CELL_OF: Record<string, Cell> = { monthly: "paid", yearly: "yearly", waived: "waived", partial: "partial" };
 
 export default function PayGrid({ months, rows: init }: { months: { month: string; label: string; amount: string }[]; rows: Row[] }) {
@@ -62,7 +62,7 @@ export default function PayGrid({ months, rows: init }: { months: { month: strin
           <button className="btn-primary" disabled={busy || changes.size === 0} onClick={save}>บันทึก {changes.size ? `(${changes.size})` : ""}</button>
         </div>
       </div>
-      <p className="hint">แตะช่องเพื่อสลับ: ว่าง → ✓ จ่ายแล้ว → – ยกเว้น → ว่าง · ปุ่ม “รายปี” = ลงจ่ายรายปีทุกเดือน (ป) · ช่องแดง = เลยกำหนด</p>
+      <p className="hint">แตะช่องเพื่อสลับ ว่าง ↔ ✓ จ่ายแล้ว · ปุ่ม “รายปี” = ลงจ่ายรายปีทุกเดือน (ป) · ช่องแดง = เลยกำหนด</p>
       {msg && <div className="msg msg-ok">{msg}</div>}
       <div className="tablecard" style={{ maxHeight: "70vh", overflow: "auto", padding: 0 }}>
         <table className="paygrid" style={{ minWidth: 200 + months.length * 52 }}>

@@ -5,6 +5,7 @@
 //   GET  state                                         -> ข้อมูลทั้งหมด (board + ของฉัน)
 //   POST fortune  {state}                              -> ซิงก์สมุดเซียมซี
 //   POST claim    {formId}                             -> กด "ทำแล้ว"
+//   POST slip     {image(base64 jpeg), month?}         -> ส่งสลิปเงินรุ่น (AI ตรวจ → ฝ่ายการเงินยืนยัน)
 import { NextResponse } from "next/server";
 import {
   verifyIdToken, signSession, currentSession, signClaim, verifyClaim, APP_COOKIE,
@@ -125,6 +126,19 @@ export async function POST(req: Request, { params }: { params: { action: string 
         }
         await setStatus(s.sid, form.form_id, "claimed", "self_claim", "กดทำแล้วในแอป");
         return NextResponse.json({ ok: true, state: "claimed" });
+      }
+
+      case "slip": {
+        const s = currentSession();
+        if (!s) return bad("unauthorized", 401);
+        if (s.preview) return bad("โหมดพรีวิวส่งสลิปไม่ได้");
+        if (throttled(`slip:${s.sid}`, 20_000)) return bad("รอสักครู่แล้วค่อยส่งอีกใบนะ");
+        const img = String(body.image ?? "").replace(/^data:[^,]+,/, "");
+        if (img.length < 2000 || img.length > 3_000_000) return bad("รูปสลิปไม่ถูกต้อง");
+        const { submitSlip } = await import("@/lib/bc/slips");
+        const r = await submitSlip({ studentId: s.sid, imageBase64: img, mimeType: "image/jpeg", source: "app", month: body.month ? String(body.month) : undefined });
+        if (!r) return bad("ไม่เห็นว่าเป็นสลิปโอนเงิน ลองถ่าย/แคปใหม่ให้ชัด ๆ นะ");
+        return NextResponse.json({ ok: true, verdict: r.verdict, message: r.message });
       }
     }
     return bad("unknown", 404);

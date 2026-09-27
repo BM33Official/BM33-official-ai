@@ -37,6 +37,8 @@ export async function addForm(input: {
   deadline_at?: string;
   link?: string;
   description?: string;
+  source?: string;
+  announcement_id?: string;
 }): Promise<string> {
   const form_id = `F-${Date.now().toString(36).toUpperCase()}`;
   await appendRecord("forms", { form_id, ...input, created_at: nowISO(), status: "open" });
@@ -47,4 +49,30 @@ export async function updateForm(form: FormDef, patch: Partial<FormDef>): Promis
   const latest = (await readForms(true)).find((f) => f.form_id === form.form_id);
   if (!latest?.__row) return;
   await patchRecord("forms", latest.__row, latest as never, patch as Record<string, string>);
+}
+
+
+// ── สิ่งที่ต้องกรอก "อัตโนมัติ": ประกาศที่มีลิงก์ฟอร์ม -> สร้างรายการให้เลย (แอดมินแค่ตรวจ/แก้) ──
+export const FORM_URL = /(forms\.gle\/|docs\.google\.com\/forms\/|forms\.office\.com|form\.jotform|typeform\.com)/i;
+
+export async function syncFormFromAnnouncement(a: { id: string; title: string; summary: string; deadline_at: string; links: { label: string; url: string }[]; status?: string }): Promise<string | null> {
+  const link = a.links.find((l) => FORM_URL.test(l.url))?.url;
+  if (!link) return null;
+  const forms = await readForms(true);
+  const existing = forms.find((f) => f.announcement_id === a.id || (f.link && f.link === link));
+  if (existing) {
+    // ประกาศถูกแก้เดดไลน์/ซ่อน -> ตามไปด้วย (เฉพาะรายการที่ระบบสร้าง)
+    if (existing.source === "auto") {
+      const patch: Partial<FormDef> = {};
+      if (a.deadline_at && a.deadline_at !== existing.deadline_at) patch.deadline_at = a.deadline_at;
+      if (a.status && ["hidden", "deleted"].includes(a.status) && existing.status !== "deleted") patch.status = "deleted";
+      if (Object.keys(patch).length) await updateForm(existing, patch);
+    }
+    return existing.form_id;
+  }
+  if (a.status && a.status !== "live") return null;
+  return addForm({
+    name: a.title.slice(0, 80), type: "form", response_sheet_id: "", response_tab: "", id_column: "", done_condition: "",
+    access: "manual", deadline_at: a.deadline_at, link, description: a.summary.slice(0, 300), source: "auto", announcement_id: a.id,
+  });
 }

@@ -16,19 +16,19 @@ import { getConfig } from "@/lib/bc/config";
 import { currentDaily, parseItems } from "@/lib/bc/daily";
 import { thDateTime, bkkDayKey, dayDiff } from "@/lib/time";
 
-const clean = (s: unknown) => String(s ?? "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+export const clean = (s: unknown) => String(s ?? "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
 
-function rowsOf(grid: string[][]): { header: string[]; rows: string[][] } {
+export function rowsOf(grid: string[][]): { header: string[]; rows: string[][] } {
   const header = (grid[0] ?? []).map((h) => clean(h));
   const rows = grid.slice(1).filter((r) => r.some((c) => clean(c)));
   return { header, rows };
 }
-function col(header: string[], re: RegExp): number {
+export function col(header: string[], re: RegExp): number {
   return header.findIndex((h) => re.test(h));
 }
 
 // ── 1) คลังความรู้สาธารณะ ───────────────────────────────────────────────────
-async function readPublicGrids(): Promise<Partial<Record<SourceId, string[][]>>> {
+export async function readPublicGrids(): Promise<Partial<Record<SourceId, string[][]>>> {
   const ids: SourceId[] = ["current", "historyIndex", "knowledgeArchive", "announcementArchive", "linkArchive"];
   const ranges: string[] = [];
   const used: SourceId[] = [];

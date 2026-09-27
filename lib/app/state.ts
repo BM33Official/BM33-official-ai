@@ -70,8 +70,9 @@ const ZONE_COPY: Record<string, { title: string; text: string }> = {
 };
 
 export async function personalState(sid: string) {
-  const [roster, fees, forms, rank, draws, fortune, committee] = await Promise.all([
+  const [roster, fees, forms, rank, draws, fortune, committee, slips] = await Promise.all([
     readRoster(), feeStatusFor(sid), formStatesFor(sid), ranking(), drawsForStudent(sid), getFortune(sid), readCommittee(),
+    import("@/lib/bc/slips").then((m) => m.readSlips()).catch(() => []),
   ]);
   const me = roster.find((r) => r.student_id === sid);
   const r = rank.rows.find((x) => x.student_id === sid);
@@ -94,6 +95,8 @@ export async function personalState(sid: string) {
     },
     draws,
     fortune,
+    // สลิปของฉันที่ยังรอฝ่ายการเงิน (ไม่ส่งรูปกลับ)
+    slips: slips.filter((x) => x.student_id === sid && x.status === "pending").map((x) => ({ id: x.id, month: x.month, amount: x.amount, created_at: x.created_at })),
   };
 }
 

@@ -10,11 +10,16 @@ const KIND: Record<string, [string, string]> = {
   answer: ["ตอบได้", "b-ok"], partial: ["ตอบได้บางส่วน + ส่งต่อประธาน", "b-warn"], cannot_answer: ["ส่งต่อประธาน", "b-danger"], smalltalk: ["คุยเล่น", "b-blue"],
 };
 
+const ROUTE: Record<string, [string, string]> = {
+  rule: ["ตอบจากกฎ (ฟรี)", "b-green"], cache: ["จากแคช (ฟรี)", "b-green"], ai: ["AI", "b-blue"], "ai+search": ["AI + ค้นเพิ่ม", "b-purple"],
+  budget: ["งบหมด", "b-red"], cap: ["เกินโควตาต่อวัน", "b-orange"],
+};
+
 export default function AiConsole({ roster }: { roster: { sid: string; label: string }[] }) {
   const [q, setQ] = useState("");
   const [as, setAs] = useState("admin");
   const [busy, setBusy] = useState(false);
-  const [res, setRes] = useState<{ out: Out; messages: Msg[]; model: string; ms: number; tokens: number; cached: number; error?: string } | null>(null);
+  const [res, setRes] = useState<{ out: Out; messages: Msg[]; model: string; ms: number; tokens: number; cached: number; error?: string; route?: string; evidence?: number } | null>(null);
   const [hist, setHist] = useState<string[]>([]);
   const samples = ["เงินรุ่นเดือนนี้เท่าไหร่ จ่ายยังไง", "ตารางเรียนพรุ่งนี้มีอะไร เรียนตึกไหน", "ฟอร์ม wellness survey ลิงก์อยู่ไหน", "ไอจีของมาร์ธาคืออะไร", "ฉันจ่ายเงินรุ่นครบยัง", "สอบครั้งหน้าวันไหน", "ใครเป็นฝ่ายวิชาการ", "เสื้อ MED VAJIRA ราคาเท่าไหร่"];
 
@@ -30,7 +35,7 @@ export default function AiConsole({ roster }: { roster: { sid: string; label: st
 
   return (
     <div className="card">
-      <b>🧪 ลองถามบอท (ผลเหมือนที่เพื่อน ๆ จะได้ใน LINE)</b>
+      <b>ลองถามบอท (ผลเหมือนที่เพื่อน ๆ จะได้ใน LINE)</b>
       <div className="grid g2" style={{ marginTop: 10 }}>
         <div className="field" style={{ margin: 0 }}><label>ถามในฐานะ</label>
           <select value={as} onChange={(e) => setAs(e.target.value)}>
@@ -53,7 +58,8 @@ export default function AiConsole({ roster }: { roster: { sid: string; label: st
           <div className="row">
             <span className={`badge ${KIND[res.out.kind]?.[1] ?? "b-muted"}`}>{KIND[res.out.kind]?.[0] ?? res.out.kind}</span>
             {res.out.topic && <span className="badge b-muted">หมวด {res.out.topic}</span>}
-            <span className="hint" style={{ margin: 0 }}>{res.model} · {(res.ms / 1000).toFixed(1)} วิ · prompt {res.tokens?.toLocaleString?.() ?? "-"} tokens{res.cached ? ` (cache ${res.cached.toLocaleString()})` : ""}</span>
+            {res.route && <span className={`badge ${ROUTE[res.route]?.[1] ?? "b-muted"}`}>{ROUTE[res.route]?.[0] ?? res.route}</span>}
+            <span className="hint" style={{ margin: 0 }}>{res.model || "ไม่เรียก AI"} · {(res.ms / 1000).toFixed(1)} วิ{res.tokens ? ` · ${res.tokens.toLocaleString()} tokens` : ""}{res.evidence ? ` · ค้นเจอ ${res.evidence} ชิ้น` : ""}</span>
           </div>
           {res.error && <div className="msg msg-err">{res.error}</div>}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, maxWidth: 420 }}>

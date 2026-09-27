@@ -11,6 +11,7 @@ import { GoogleGenAI, ThinkingLevel, Type } from "@google/genai";
 import { z } from "zod";
 import { cached } from "@/lib/cache";
 import { log } from "@/lib/logger";
+import { recordUsage } from "@/lib/ai/usage";
 
 let _ai: GoogleGenAI | null = null;
 export function getAi(): GoogleGenAI {
@@ -84,11 +85,12 @@ function isTransient(err: unknown): boolean {
   return /429|RESOURCE_EXHAUSTED|500|502|503|504|UNAVAILABLE|overloaded|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg);
 }
 
-function thinkingFor(model: string, level: "LOW" | "MEDIUM" | "HIGH") {
+export type Thinking = "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
+function thinkingFor(model: string, level: Thinking) {
   const p = parseModel(model);
   if (p && p.version >= 3) return { thinkingLevel: ThinkingLevel[level] };
   // gemini 2.x ใช้ budget แทน level
-  return { thinkingBudget: level === "LOW" ? 512 : level === "MEDIUM" ? 2048 : 6144 };
+  return { thinkingBudget: level === "MINIMAL" ? 0 : level === "LOW" ? 512 : level === "MEDIUM" ? 2048 : 6144 };
 }
 
 export type GeminiResult = {
@@ -110,7 +112,10 @@ interface GenOpts {
   timeoutMs?: number;
   temperature?: number;
   maxOutputTokens?: number;
-  thinking?: "LOW" | "MEDIUM" | "HIGH";
+  thinking?: Thinking;
+  // สำหรับมิเตอร์ค่าใช้จ่าย (BC_usage): ฟีเจอร์ที่เรียก + ผู้ใช้ (student id/line id)
+  feature?: string;
+  who?: string;
   json?: { schema: Record<string, unknown> };
   extraParts?: Part[];
   // ส่วน "คงที่" ที่อยากให้ implicit cache จับ (วางไว้ก่อนคำถามเสมอ)
@@ -142,6 +147,12 @@ export async function generate(systemInstruction: string, userContent: string, o
           },
         });
         const c = res.candidates?.[0];
+        const um = res.usageMetadata;
+        await recordUsage({
+          feature: opts.feature ?? "other", model, who: opts.who,
+          prompt: um?.promptTokenCount ?? 0, cached: um?.cachedContentTokenCount ?? 0,
+          output: (um?.candidatesTokenCount ?? 0) + (um?.thoughtsTokenCount ?? 0),
+        });
         return {
           text: (res.text ?? "").trim(),
           finishReason: c?.finishReason,
@@ -205,7 +216,7 @@ export async function askGemini(
   timeoutMs = 15000,
   extraParts: Part[] = []
 ): Promise<GeminiResult> {
-  return generate(systemInstruction, userContent, { timeoutMs, extraParts, maxOutputTokens: 4096 });
+  return generate(systemInstruction, userContent, { timeoutMs, extraParts, maxOutputTokens: 4096, feature: "summary" });
 }
 
 // ── structured router (legacy — ไม่ใช้แล้ว เพราะ AI อ่านข้อมูลทั้งหมดทุกคำถาม) ─
@@ -237,7 +248,7 @@ export async function routeWithGemini(question: string): Promise<RouterOutput | 
       required: ["intent", "sourceIds"],
     },
     RouterSchema as unknown as z.ZodType<RouterOutput>,
-    { timeoutMs: 6000, temperature: 0.2, maxOutputTokens: 1024 }
+    { timeoutMs: 6000, temperature: 0.2, maxOutputTokens: 1024, feature: "router" }
   ).catch(() => ({ data: null }));
   return data;
 }
@@ -290,7 +301,7 @@ export async function distillKnowledge(batchText: string): Promise<KnowledgeItem
       },
     },
     DigestSchema as unknown as z.ZodType<{ items: KnowledgeItem[] }>,
-    { timeoutMs: 45_000, temperature: 0.4, maxOutputTokens: 8192 }
+    { timeoutMs: 45_000, temperature: 0.4, maxOutputTokens: 8192, feature: "digest", thinking: "LOW" }
   );
   return data?.items ?? [];
 }
@@ -304,7 +315,7 @@ export async function captionImage(
   return generate(
     `อธิบายเนื้อหาในรูปเป็นภาษาไทยสั้น กระชับ เน้นข้อมูลที่เป็นประโยชน์ต่อรุ่น (ประกาศ กำหนดการ วันเวลา จำนวนเงิน ลิงก์ สถานที่ รายชื่อ). ถ้าเป็นรูปทั่วไป/มีม/สติกเกอร์ ให้ตอบสั้น ๆ ว่าเป็นรูปทั่วไป. ห้ามเดาข้อมูลที่ไม่เห็นในรูป. ห้ามใช้ markdown`,
     `ช่วยสรุปข้อมูลสำคัญจากรูปนี้${hint ? " (บริบท: " + hint + ")" : ""}`,
-    { timeoutMs: 15000, extraParts: [{ inlineData: { mimeType, data: imageBase64 } }], maxOutputTokens: 2048 }
+    { timeoutMs: 15000, extraParts: [{ inlineData: { mimeType, data: imageBase64 } }], maxOutputTokens: 1024, feature: "image", thinking: "MINIMAL" }
   );
 }
 

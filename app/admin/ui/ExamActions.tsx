@@ -13,8 +13,7 @@ export default function ExamActions({ examId, examName }: { examId: string; exam
   }
   return (
     <div className="row" style={{ gap: 8, justifyContent: "flex-end", flexWrap: "nowrap" }}>
-      <a className="btn btn-sm" href={`/admin/academic?exam=${examId}`}>ทำเครื่องหมาย</a>
-      <button className="btn btn-sm btn-danger" onClick={cancel} disabled={busy}>{busy ? "…" : "ยกเลิก"}</button>
+      <button className="btn btn-sm btn-danger" onClick={cancel} disabled={busy}>{busy ? "…" : "ลบข้อสอบนี้"}</button>
     </div>
   );
 }

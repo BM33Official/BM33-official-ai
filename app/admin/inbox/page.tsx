@@ -1,3 +1,5 @@
+// รออนุมัติ — ทุกอย่างที่ต้องให้คนตัดสินใจก่อนถึงเพื่อน ๆ (ส่งให้คุณตรวจทาง LINE ด้วยเสมอ)
+import { Inbox, Hand, IdCard, History, MessageCircle, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { requireAdmin } from "@/lib/bc/auth";
 import { readMembers } from "@/lib/bc/members";
 import { readForms } from "@/lib/bc/forms";
@@ -6,8 +8,8 @@ import { readRoster } from "@/lib/bc/roster";
 import { readOutbox, resolveAudience, audienceLabel } from "@/lib/bc/outbox";
 import ConfirmButtons from "../ui/ConfirmButtons";
 import OutboxCard from "../ui/OutboxCard";
-import PageHead from "../ui/PageHead";
-import { thDateTime } from "@/lib/time";
+import { Head, Sq, Empty } from "../ui/kit";
+import { thDateTime, agoTh } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,25 +17,25 @@ export const dynamic = "force-dynamic";
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 type Msg = { type: string; contents?: { body?: { contents?: { action?: { label: string; uri: string } }[] } } };
 
-export default async function Inbox() {
+export default async function InboxPage() {
   await requireAdmin();
-  const [members, forms, overlay, roster, outbox] = await Promise.all([
-    readMembers(true), readForms(), readOverlay(true), readRoster(), readOutbox(true),
-  ]);
-  const nameById = new Map(roster.map((r) => [r.student_id, `${r.nickname} (${r.full_name})`]));
+  const [members, forms, overlay, roster, outbox] = await Promise.all([readMembers(true), readForms(), readOverlay(true), readRoster(), readOutbox(true)]);
+  const nameById = new Map(roster.map((r) => [r.student_id, r.nickname || r.full_name]));
   const formById = new Map(forms.map((f) => [f.form_id, f.name]));
   const now = Date.now();
   const pending = outbox.filter((o) => o.status === "pending" && !(o.expires_at && new Date(o.expires_at).getTime() < now));
-  const history = outbox.filter((o) => o.status !== "pending" || (o.expires_at && new Date(o.expires_at).getTime() < now)).slice(-15).reverse();
+  const history = outbox.filter((o) => !pending.includes(o)).slice(-12).reverse();
   const items = await Promise.all(pending.map(async (o) => {
     let links: { label: string; url: string }[] = [];
+    let personal = false;
     try {
-      const msgs = JSON.parse(o.messages) as Msg[];
-      links = msgs.flatMap((m) => m.contents?.body?.contents?.map((c) => c.action).filter(Boolean) ?? []).map((a) => ({ label: a!.label, url: a!.uri }));
+      const v = JSON.parse(o.messages);
+      if (Array.isArray(v)) links = (v as Msg[]).flatMap((m) => m.contents?.body?.contents?.map((c) => c.action).filter(Boolean) ?? []).map((a) => ({ label: a!.label, url: a!.uri }));
+      else personal = true;
     } catch { /* */ }
     return {
-      id: o.id, code: o.code, title: o.title, audience: o.audience, audienceLabel: audienceLabel(o.audience),
-      count: (await resolveAudience(o.audience)).length, preview: o.preview, links, kind: o.kind,
+      id: o.id, code: o.code, title: o.title, audience: o.audience, audienceLabel: personal ? "ข้อความเฉพาะคน" : audienceLabel(o.audience),
+      count: (await resolveAudience(o.audience)).length, preview: o.preview, links, kind: o.kind, personal,
       created: thDateTime(o.created_at), expires: o.expires_at ? thDateTime(o.expires_at) : "",
     };
   }));
@@ -42,72 +44,60 @@ export default async function Inbox() {
 
   return (
     <div className="wrap">
-      <PageHead icon="📥" title="กล่องรอตรวจ" desc="ทุกอย่างที่ต้องให้คนตัดสินใจก่อน — ข้อความที่จะส่งถึงเพื่อน ๆ, คนที่กด “ทำแล้ว”, และการยืนยันตัวตนที่ไม่ตรง"
-        steps={["อ่าน/แก้ข้อความ", "กดอนุมัติ & ส่ง (หรือพิมพ์ approve ใน LINE)", "ไม่ต้องการก็กด “ไม่ส่ง”"]} />
+      <Head icon={Inbox} tone="red" title="รออนุมัติ" sub="ไม่มีข้อความไหนถึงเพื่อน ๆ จนกว่าคุณจะกดส่ง" />
 
-      <h2 style={{ marginTop: 0 }}>✉️ ข้อความรออนุมัติ ({items.length})</h2>
-      {items.length === 0 ? <div className="card"><p className="hint" style={{ margin: 0 }}>ไม่มีข้อความรออนุมัติ — ระบบจะร่างเตือนเดดไลน์ให้อัตโนมัติ และทักคุณใน LINE เมื่อมีรายการใหม่</p></div>
-        : items.map((it) => <OutboxCard key={it.id} it={it} />)}
-
-      <h2>🙋 กด “ทำแล้ว” รอยืนยัน ({claims.length})</h2>
-      <div className="card tablecard">
-        {claims.length === 0 ? <p className="sub" style={{ margin: 0, padding: 8 }}>ไม่มีรายการรอตรวจ 🎉</p> : (
-          <table>
-            <thead><tr><th>นักศึกษา</th><th>รายการ</th><th>หมายเหตุ</th><th>เมื่อ</th><th></th></tr></thead>
-            <tbody>
-              {claims.map((c, i) => (
-                <tr key={i}>
-                  <td><b>{nameById.get(digits(c.student_id)) || c.student_id}</b></td>
-                  <td>{formById.get(c.form_id) || c.form_id}</td>
-                  <td className="hint">{c.note}</td>
-                  <td className="hint">{thDateTime(c.updated_at)}</td>
-                  <td><ConfirmButtons studentId={c.student_id} formId={c.form_id} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <div className="card flat row" style={{ gap: 14, marginBottom: 18 }}>
+        <Sq icon={MessageCircle} tone="line" size="lg" />
+        <div style={{ flex: 1, minWidth: 220 }}><b>อนุมัติจาก LINE ได้เลย</b><div className="hint">ทุกรายการใหม่ บอทส่งการ์ดให้คุณในแชต — กดปุ่ม หรือพิมพ์ <b>approve 123</b> · <b>approve all</b> · <b>reject 123</b></div></div>
       </div>
+
+      {items.length === 0 ? <div className="card"><Empty icon={CheckCircle2} title="ไม่มีข้อความรออนุมัติ" sub="ระบบจะร่างเตือนเดดไลน์ให้เองก่อน 3 วัน · 1 วัน · เช้าวันจริง" /></div>
+        : <div className="stack">{items.map((it) => <OutboxCard key={it.id} it={it} />)}</div>}
+
+      {claims.length > 0 && (
+        <>
+          <h2 className="row" style={{ gap: 10 }}><Sq icon={Hand} tone="orange" /> กด “กรอกแล้ว” รอยืนยัน <span className="badge b-orange">{claims.length}</span></h2>
+          <div className="list">
+            {claims.map((c, i) => (
+              <div key={i} className="li">
+                <span className="ic lg c-orange" style={{ fontWeight: 800 }}>{(nameById.get(digits(c.student_id)) ?? "?").slice(0, 1)}</span>
+                <div className="li-b"><b>{nameById.get(digits(c.student_id)) || c.student_id}</b><small>{formById.get(c.form_id) || c.form_id}{c.note ? ` · ${c.note}` : ""} · {agoTh(c.updated_at)}</small></div>
+                <ConfirmButtons studentId={c.student_id} formId={c.form_id} />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {mismatches.length > 0 && (
         <>
-          <h2>🪪 ยืนยันตัวตนไม่ตรง ({mismatches.length})</h2>
-          <div className="card tablecard">
-            <table>
-              <thead><tr><th>ชื่อ LINE</th><th>ที่แจ้ง</th><th>รหัสที่ขอ</th><th>ช่องทาง</th></tr></thead>
-              <tbody>
-                {mismatches.map((m, i) => (
-                  <tr key={i}><td>{m.display_name || "-"}</td><td>{m.claimed_name}</td><td>{m.pending_student_id || `…${m.last3}`}</td><td className="hint">{m.liff_user_id ? "แอป" : "บอท"}</td></tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="hint" style={{ marginTop: 10 }}>กรณี “ขอยืนยันซ้ำ” = มีบัญชี LINE อื่นยืนยันรหัสนี้ไปแล้ว ตรวจกับเจ้าตัว ถ้าบัญชีเดิมผิด ให้ลบค่า liff_user_id ของแถวเดิมในแท็บ BC_members</p>
+          <h2 className="row" style={{ gap: 10 }}><Sq icon={IdCard} tone="pink" /> ยืนยันตัวตนไม่ตรง <span className="badge b-red">{mismatches.length}</span></h2>
+          <div className="list">
+            {mismatches.map((m, i) => (
+              <div key={i} className="li"><span className="ic lg c-pink"><IdCard strokeWidth={2.4} /></span>
+                <div className="li-b"><b>{m.display_name || "-"} → {m.claimed_name}</b><small>รหัสที่ขอ {m.pending_student_id || `…${m.last3}`} · ผ่าน{m.liff_user_id ? "แอป" : "บอท"} · มีบัญชีอื่นยืนยันรหัสนี้ไปแล้ว ถ้าบัญชีเดิมผิดให้ลบ liff_user_id ของแถวเดิมใน BC_members</small></div>
+              </div>
+            ))}
           </div>
         </>
       )}
 
       {history.length > 0 && (
-        <>
-          <h2>ประวัติล่าสุด</h2>
-          <div className="card tablecard">
-            <table>
-              <thead><tr><th>#</th><th>รายการ</th><th>สถานะ</th><th>เมื่อ</th><th>ผล</th></tr></thead>
-              <tbody>
-                {history.map((o) => {
-                  const expired = o.status === "pending";
-                  return (
-                    <tr key={o.id}>
-                      <td>{o.code}</td><td>{o.title}</td>
-                      <td><span className={`badge ${o.status === "sent" ? "b-ok" : o.status === "rejected" || expired ? "b-muted" : "b-danger"}`}>{expired ? "หมดอายุ" : o.status === "sent" ? "ส่งแล้ว" : o.status === "rejected" ? "ไม่ส่ง" : o.status}</span></td>
-                      <td className="hint">{thDateTime(o.sent_at || o.decided_at || o.created_at)}</td>
-                      <td className="hint">{o.result}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <details className="more" style={{ marginTop: 26 }}>
+          <summary><History size={16} /> ประวัติล่าสุด</summary>
+          <div className="list" style={{ marginTop: 10 }}>
+            {history.map((o) => {
+              const expired = o.status === "pending";
+              const sent = o.status === "sent";
+              return (
+                <div key={o.id} className="li">
+                  {sent ? <CheckCircle2 color="#34c759" /> : expired ? <Clock color="#8e8e93" /> : <XCircle color="#ff3b30" />}
+                  <div className="li-b"><b>{o.title}</b><small>#{o.code} · {expired ? "หมดเวลา" : sent ? "ส่งแล้ว" : o.status === "rejected" ? "ไม่ส่ง" : o.status} · {thDateTime(o.sent_at || o.decided_at || o.created_at)} · {o.result}</small></div>
+                </div>
+              );
+            })}
           </div>
-        </>
+        </details>
       )}
     </div>
   );

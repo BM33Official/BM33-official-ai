@@ -106,6 +106,8 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     if (isGroup && shouldLearn(groupId) && process.env.LEARN_IMAGES !== "0") {
       await learnImage(message.id, groupId!, userId);
     }
+    // แชตส่วนตัว: รูปสลิปโอนเงินรุ่น -> AI อ่าน -> รอฝ่ายการเงินยืนยัน
+    if (!isGroup && userId && replyToken) await maybeHandleSlipImage(replyToken, userId, message.id);
     return;
   }
 
@@ -148,19 +150,14 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     );
   }
 
-  // ── ในกลุ่ม: ตอบเฉพาะเมื่อถูก mention หรือขึ้นต้น /ถาม ─────────────────────
-  const mentionedSelf =
-    (message as { mention?: { mentionees?: Array<{ isSelf?: boolean }> } }).mention?.mentionees?.some(
-      (m) => m.isSelf
-    ) ?? false;
-  const askCmd = /^\s*\/?ถาม\s+/.test(rawText);
-  if (isGroup && !mentionedSelf && !askCmd) return;
+  // ── ในกลุ่ม: "ฟังอย่างเดียว" — ไม่ตอบ ไม่รีแอค แม้ถูกแท็ก (ผู้ใช้สั่งไว้) ─────────
+  if (isGroup) return;
 
   if (!replyToken) return;
   const question = rawText.replace(/^\s*\/?ถาม\s+/, "").replace(/@\S+/g, "").trim();
   if (!question) return;
 
-  await answerQuestion(replyToken, question, userId, isGroup ? groupId : undefined);
+  await answerQuestion(replyToken, question, userId);
 }
 
 // ── ข้อมูลผู้ใช้ ────────────────────────────────────────────────────────────
@@ -308,11 +305,15 @@ async function maybeHandleAnnouncementDM(replyToken: string, userId: string, raw
 // ── จับประกาศจากข้อความกลุ่มของกรรมการ ────────────────────────────────────────
 async function maybeCaptureAnnouncement(userId: string | undefined, name: string, text: string, messageId: string): Promise<void> {
   const t = text.trim();
-  // ข้อความสั้น ๆ/คุยเล่นไม่ต้องเรียก AI
-  const looksLike = t.length >= 60 || /@all|ประกาศ|รบกวน|ฝาก|เดดไลน์|deadline|ภายใน|ก่อนวัน|https?:\/\//i.test(t);
-  if (!looksLike || t.length < 20) return;
+  // ข้อความสั้น ๆ/คุยเล่นไม่ต้องเรียก AI (ประหยัดงบ): ต้องยาวพอ + มีสัญญาณของประกาศ
+  const strong = /@all|ประกาศ|เดดไลน์|deadline|ภายใน(วัน)?|ก่อนวัน|ปิดรับ|เปิดรับ|รับสมัคร|แบบฟอร์ม|https?:\/\//i.test(t);
+  if (t.length < 60 || (!strong && t.length < 160)) return;
   const who = await committeeRoleOf(userId);
   if (!who) return;
+  const { budgetState } = await import("@/lib/ai/usage");
+  const b = await budgetState().catch(() => null);
+  if (b?.mode === "off") return;
+  if (b?.mode === "lean" && !(/https?:\/\//.test(t) && t.length >= 100)) return;
   const { announcementFromText } = await import("@/lib/bc/announcements");
   const r = await announcementFromText({ text: t, author: who.nickname || name, authorRole: who.role, source: "group", sourceRef: messageId });
   if (r) log.info("announcement_captured", { id: r.id, by: mask(userId) });
@@ -369,7 +370,8 @@ async function maybeHandlePersonalTasks(replyToken: string, userId: string, rawT
 }
 
 // ── ตอบคำถาม ────────────────────────────────────────────────────────────────
-async function answerQuestion(replyToken: string, question: string, userId: string | undefined, groupId?: string): Promise<void> {
+async function answerQuestion(replyToken: string, question: string, userId: string | undefined): Promise<void> {
+  const groupId: string | undefined = undefined;
   // แสดง "กำลังพิมพ์..." ระหว่าง AI อ่านข้อมูล (เฉพาะแชตส่วนตัว)
   if (!groupId && userId) {
     lineClient.showLoadingAnimation({ chatId: userId, loadingSeconds: 30 }).catch(() => {});
@@ -388,18 +390,28 @@ async function answerQuestion(replyToken: string, question: string, userId: stri
 
   log.info("answer", {
     userId: mask(userId), kind: r.out.kind, topic: r.out.topic, model: r.model ?? "-", ms: r.ms,
-    promptTokens: r.tokens ?? 0, cachedTokens: r.cached ?? 0, error: r.error ?? "",
+    promptTokens: r.tokens ?? 0, cachedTokens: r.cached ?? 0, route: r.route ?? "", evidence: r.evidence ?? 0, error: r.error ?? "",
   });
   // บันทึกถาม-ตอบ (แอดมินดูในหน้า AI) — ไม่ให้ล้มถ้าเขียนไม่ได้
   await appendRows(`'${TABS.chatlog}'!A1`, [[
     new Date().toISOString(), groupId ? "group" : "dm", s.sid, s.nickname, question.slice(0, 1000),
-    r.out.kind, (r.out.reply || "").slice(0, 1500), r.model ?? "", String(r.ms), String(r.tokens ?? ""),
+    r.out.kind, (r.out.reply || "").slice(0, 1500), `${r.route ?? ""}${r.model ? ":" + r.model : ""}`, String(r.ms), String(r.tokens ?? ""),
   ]]).catch(() => {});
 }
 
 // รูป: ดึง -> caption ด้วย Gemini vision -> log เป็น type image (+ ประกาศถ้าเป็นกรรมการ)
+// รูปจากคนเดียวกันติด ๆ กัน (อัลบั้มรูปกิจกรรม) -> บรรยายแค่รูปแรก
+const _lastImage = new Map<string, number>();
 async function learnImage(messageId: string, groupId: string, userId: string | undefined): Promise<void> {
   try {
+    // บรรยายรูปเฉพาะของกรรมการ (โปสเตอร์ประกาศ) — รูปเล่น/อัลบั้มไม่ต้องเสียงบ
+    if (!(await committeeRoleOf(userId))) return;
+    const k = `${groupId}/${userId}`;
+    const last = _lastImage.get(k) ?? 0;
+    _lastImage.set(k, Date.now());
+    if (Date.now() - last < 90_000) return;
+    const { budgetState } = await import("@/lib/ai/usage");
+    if ((await budgetState().catch(() => null))?.mode !== "normal") return;
     const { base64, mimeType } = await getImageBase64(messageId);
     const cap = await captionImage(base64, mimeType);
     if (cap.finishReason === "MAX_TOKENS" || !cap.text) return;
@@ -420,6 +432,21 @@ async function learnImage(messageId: string, groupId: string, userId: string | u
     log.info("image_learned", { userId: mask(userId), chars: cap.text.length });
   } catch (err) {
     log.warn("learn_image_failed", { message: String(err) });
+  }
+}
+
+// ── สลิปโอนเงินรุ่นทาง DM ─────────────────────────────────────────────────────
+async function maybeHandleSlipImage(replyToken: string, userId: string, messageId: string): Promise<void> {
+  try {
+    const s = await studentOf(userId);
+    if (!s.verified) return; // ยังไม่ลงทะเบียน -> ไม่รู้ว่าเป็นของใคร
+    const { base64, mimeType } = await getImageBase64(messageId);
+    const { submitSlip } = await import("@/lib/bc/slips");
+    const r = await submitSlip({ studentId: s.sid, imageBase64: base64, mimeType, source: "line" });
+    if (!r) return; // ไม่ใช่สลิป -> เงียบ (อาจเป็นรูปทั่วไป)
+    await safeReply(replyToken, userId, [textMessage(r.message)]);
+  } catch (err) {
+    log.warn("slip_dm_failed", { message: String(err).slice(0, 200) });
   }
 }
 

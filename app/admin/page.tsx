@@ -1,106 +1,134 @@
+// "วันนี้" — เปิดมาแล้วรู้ทันทีว่าต้องทำอะไร (ตัวเลขใหญ่ ไอคอน ไม่มีย่อหน้ายาว)
 import Link from "next/link";
+import {
+  Sun, Inbox, Hand, IdCard, Receipt, Users, Smartphone, Sparkles, MessageSquare, PartyPopper,
+  Megaphone, Upload, GraduationCap, Wallet, ChevronRight, CalendarDays, CheckCircle2,
+} from "lucide-react";
 import { requireAdmin } from "@/lib/bc/auth";
 import { snapshot } from "@/lib/bc/sheets";
 import { readRoster } from "@/lib/bc/roster";
 import { pendingOutbox } from "@/lib/bc/outbox";
-import { liveAnnouncements } from "@/lib/bc/announcements";
 import { currentDaily, parseItems } from "@/lib/bc/daily";
-import { nextUniExam, liveSchedule, examStart } from "@/lib/bc/schedule";
-import { readForms } from "@/lib/bc/forms";
 import { messageQuota } from "@/lib/line";
-import { thDateTime, relativeTh, bkkDayKey, agoTh } from "@/lib/time";
-import PageHead from "./ui/PageHead";
+import { budgetState } from "@/lib/ai/usage";
+import { readSlips } from "@/lib/bc/slips";
+import { agenda, AGENDA_TH } from "@/lib/bc/agenda";
+import { thLongDate, bkkDayKey, relativeTh, thShortDate } from "@/lib/time";
+import { Kpi, Ring, Sq, type Tone } from "./ui/kit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function Overview() {
+const KIND_TONE: Record<string, { tone: Tone; cls: string }> = {
+  class: { tone: "blue", cls: "b-blue" }, exam: { tone: "red", cls: "b-red" }, deadline: { tone: "orange", cls: "b-orange" },
+  event: { tone: "purple", cls: "b-purple" }, form: { tone: "green", cls: "b-green" },
+};
+
+const TEXT: Record<string, string> = { class: "#0058b8", exam: "var(--red-ink)", deadline: "var(--orange-ink)", event: "#8a2fb5", form: "var(--green-ink)" };
+
+export default async function Today() {
   await requireAdmin();
-  const [s, roster, pending, ann, daily, exam, sched, forms, quota] = await Promise.all([
-    snapshot(), readRoster(), pendingOutbox(), liveAnnouncements(), currentDaily(), nextUniExam(), liveSchedule(), readForms(), messageQuota(),
+  const now = Date.now();
+  const today = bkkDayKey(now);
+  const [s, roster, pending, daily, quota, budget, slips, items] = await Promise.all([
+    snapshot(), readRoster(), pendingOutbox(), currentDaily(), messageQuota(), budgetState().catch(() => null), readSlips().catch(() => []),
+    agenda(today, bkkDayKey(now + 13 * 86_400_000)),
   ]);
   const str = (v: unknown) => String(v ?? "");
   const verified = s.members.filter((m) => str(m.status) === "verified");
   const appUsers = verified.filter((m) => str(m.portal_confirmed_at)).length;
   const claims = s.status.filter((o) => str(o.state) === "claimed").length;
   const mismatch = s.members.filter((m) => str(m.onboarding_state) === "mismatch").length;
-  const drafts = s.announcements.filter((a) => str(a.status) === "draft").length;
-  const today = bkkDayKey();
-  const todayClasses = sched.filter((x) => x.date === today).length;
-  const soon = ann.filter((a) => a.deadline_at && new Date(a.deadline_at).getTime() > Date.now()).sort((a, b) => a.deadline_at.localeCompare(b.deadline_at)).slice(0, 5);
-  const openForms = forms.filter((f) => f.status !== "closed");
+  const slipN = slips.filter((x) => x.status === "pending").length;
+  const hour = Number(new Date(now + 7 * 3600_000).toISOString().slice(11, 13));
+  const hello = hour < 12 ? "อรุณสวัสดิ์" : hour < 17 ? "สวัสดีตอนบ่าย" : "สวัสดีตอนเย็น";
 
-  const todos = [
-    { n: pending.length, icon: "✉️", bg: "#e8f0fe", label: "ข้อความรออนุมัติส่ง", sub: "เตือนเดดไลน์ / ผลสุ่ม — ตรวจแล้วกดส่ง หรือพิมพ์ approve ใน LINE", href: "/admin/inbox" },
-    { n: claims, icon: "🙋", bg: "#fff2e2", label: "มีคนกด “ทำแล้ว” รอตรวจ", sub: "ยืนยันหรือปฏิเสธในกล่องรอตรวจ", href: "/admin/inbox" },
-    { n: mismatch, icon: "🪪", bg: "#ffe9ea", label: "ยืนยันตัวตนไม่ตรง", sub: "มีคนขอยืนยันซ้ำ/ข้อมูลไม่ตรงทะเบียน", href: "/admin/inbox" },
-    { n: drafts, icon: "📝", bg: "#eef0fe", label: "ประกาศฉบับร่าง", sub: "ยังไม่ขึ้นแอป", href: "/admin/announcements" },
-  ].filter((t) => t.n > 0);
+  const actions = [
+    { n: pending.length, icon: Inbox, tone: "red" as Tone, label: "ข้อความรออนุมัติ", sub: "ตรวจแล้วกดส่ง", href: "/admin/inbox" },
+    { n: slipN, icon: Receipt, tone: "teal" as Tone, label: "สลิปรอตรวจ", sub: "ฝ่ายการเงิน", href: "/admin/finance" },
+    { n: claims, icon: Hand, tone: "orange" as Tone, label: "กด “กรอกแล้ว” รอยืนยัน", sub: "สิ่งที่ต้องกรอก", href: "/admin/inbox" },
+    { n: mismatch, icon: IdCard, tone: "pink" as Tone, label: "ยืนยันตัวตนไม่ตรง", sub: "ตรวจกับเจ้าตัว", href: "/admin/inbox" },
+  ].filter((a) => a.n > 0);
+
+  const upcoming = items.filter((i) => i.kind !== "class" && new Date(i.at).getTime() > now - 3600_000).slice(0, 12);
+  const todayClasses = items.filter((i) => i.day === today && i.kind === "class");
+  const dItems = daily ? parseItems(daily.items) : [];
 
   return (
     <div className="wrap">
-      <PageHead icon="🏠" title="ภาพรวมวันนี้" desc="ดูว่าตอนนี้มีอะไรต้องทำ และแอปของเพื่อน ๆ กำลังแสดงอะไรอยู่" />
+      <div className="pagehead">
+        <div>
+          <div className="eyebrow"><Sq icon={Sun} tone="orange" /> {thLongDate(new Date())}</div>
+          <h1>{hello} 👋</h1>
+        </div>
+        <div className="row">
+          <Link href="/admin/announcements" className="btn btn-primary"><Megaphone size={17} /> ประกาศใหม่</Link>
+        </div>
+      </div>
 
-      <h2 style={{ marginTop: 0 }}>ต้องทำตอนนี้</h2>
-      {todos.length === 0 ? (
-        <div className="card" style={{ display: "flex", gap: 12, alignItems: "center" }}><span style={{ fontSize: 26 }}>🎉</span><div><b>ไม่มีอะไรค้าง</b><div className="hint">ระบบจะเตือนใน LINE ของคุณเมื่อมีข้อความใหม่ให้อนุมัติ</div></div></div>
-      ) : (
-        <div className="grid g2">
-          {todos.map((t) => (
-            <Link key={t.label} href={t.href} className="todo">
-              <span className="t-ic" style={{ background: t.bg }}>{t.icon}</span>
-              <div><b>{t.label}</b><div className="hint" style={{ marginTop: 2 }}>{t.sub}</div></div>
-              <span className="t-n">{t.n}</span>
-            </Link>
+      {actions.length ? (
+        <div className="grid g-auto">
+          {actions.map((a) => (
+            <Link key={a.label} href={a.href} className="action fade-in"><Sq icon={a.icon} tone={a.tone} size="lg" /><div><b>{a.label}</b><small>{a.sub}</small></div><span className="a-n">{a.n}</span></Link>
           ))}
         </div>
+      ) : (
+        <div className="allgood"><Sq icon={PartyPopper} tone="green" size="xl" /><div><b>ไม่มีอะไรค้าง</b><span className="hint">เมื่อมีข้อความใหม่ให้อนุมัติ ระบบจะทักคุณใน LINE</span></div></div>
       )}
 
-      <h2>ตัวเลขสำคัญ</h2>
-      <div className="grid g4">
-        <div className="card"><div className="label">ยืนยันตัวตนแล้ว</div><div className="stat">{verified.length}<small> / {roster.length} คน</small></div><div className="hint">เปิดแอปแล้ว {appUsers} คน</div></div>
-        <div className="card"><div className="label">ประกาศบนแอป</div><div className="stat">{ann.length}<small> รายการ</small></div><div className="hint">{soon.length ? `ใกล้เดดไลน์ ${soon.length} รายการ` : "ไม่มีเดดไลน์ใกล้"}</div></div>
-        <div className="card"><div className="label">สอบถัดไป</div><div className="stat" style={{ fontSize: exam ? 22 : 32 }}>{exam ? relativeTh(examStart(exam).toISOString()) : "—"}</div><div className="hint">{exam ? `${exam.name} · ${thDateTime(examStart(exam).toISOString())}` : "ยังไม่มีสอบในระบบ"}</div></div>
-        <div className="card"><div className="label">โควตาข้อความ LINE</div><div className="stat">{quota.remaining === null ? "∞" : quota.remaining.toLocaleString()}</div><div className="hint">ใช้ไป {quota.used.toLocaleString()}{quota.limit ? ` / ${quota.limit.toLocaleString()}` : ""} เดือนนี้</div></div>
+      <div className="grid g4" style={{ marginTop: 18 }}>
+        <Kpi icon={Users} tone="blue" value={verified.length} unit={`/ ${roster.length}`} label="เพื่อนลงทะเบียนแล้ว" href="/admin/members">
+          <Ring value={verified.length} max={roster.length || 100} size={46} stroke={6} tone="blue" label="" />
+        </Kpi>
+        <Kpi icon={Smartphone} tone="indigo" value={appUsers} unit="คน" label="เปิดแอป BM33 แล้ว" href="/admin/members" />
+        <Kpi icon={Sparkles} tone="purple" value={budget ? `$${budget.spent.toFixed(2)}` : "—"} unit={budget ? `/ $${budget.budget}` : ""} label="ค่า AI เดือนนี้" href="/admin/ai">
+          {budget && <Ring value={budget.spent} max={budget.budget} size={46} stroke={6} tone={budget.pct > 0.8 ? "red" : "purple"} label="" />}
+        </Kpi>
+        <Kpi icon={MessageSquare} tone="line" value={quota.remaining === null ? "∞" : quota.remaining.toLocaleString()} label={`ข้อความ LINE เหลือเดือนนี้${quota.limit ? ` (จาก ${quota.limit.toLocaleString()})` : ""}`}>
+          {quota.limit ? <Ring value={quota.limit - (quota.remaining ?? 0)} max={quota.limit} size={46} stroke={6} tone="line" label="" /> : null}
+        </Kpi>
       </div>
+
+      <div className="card-h" style={{ marginTop: 30 }}>
+        <h2 style={{ margin: 0 }}>2 สัปดาห์ข้างหน้า</h2>
+        <Link href="/admin/daily" className="btn btn-sm"><CalendarDays size={15} /> ปฏิทินเต็ม</Link>
+      </div>
+      {upcoming.length ? (
+        <div className="strip">
+          {upcoming.map((i, k) => {
+            const t = KIND_TONE[i.kind];
+            return (
+              <div key={k} className="tl fade-in">
+                <div className="row between"><span className={`badge ${t.cls}`}>{AGENDA_TH[i.kind]}</span><span className="hint">{thShortDate(i.at)}</span></div>
+                <b>{i.title}</b>
+                <div className="when" style={{ color: TEXT[i.kind] }}>{relativeTh(i.at)}</div>
+              </div>
+            );
+          })}
+        </div>
+      ) : <div className="card"><span className="hint">ยังไม่มีเดดไลน์หรือนัดในอีก 2 สัปดาห์</span></div>}
 
       <div className="grid g2" style={{ marginTop: 18 }}>
         <div className="card">
-          <div className="row" style={{ justifyContent: "space-between" }}><b>☀️ สรุปวันนี้ที่แอปแสดงอยู่</b><Link className="btn btn-sm" href="/admin/daily">แก้ไข</Link></div>
+          <div className="card-h"><h3><Sq icon={Sun} tone="yellow" /> สรุปวันนี้บนแอป</h3><Link href="/admin/daily" className="btn btn-sm">แก้ไข</Link></div>
           {daily ? (
-            <>
-              <div style={{ margin: "10px 0 6px", fontWeight: 800 }}>{daily.headline}</div>
-              {parseItems(daily.items).map((i, k) => <div key={k} className="hint" style={{ fontSize: 13.5 }}>{i.emoji} {i.text}</div>)}
-              <div className="hint" style={{ marginTop: 8 }}>{daily.date === today ? "ของวันนี้" : `ของวันที่ ${daily.date} (วันนี้ยังไม่สร้าง)`} · {daily.source === "edited" ? "แก้โดยแอดมิน" : "AI ร่าง"} · {agoTh(daily.updated_at)}</div>
-            </>
-          ) : <p className="hint">ยังไม่มี — ระบบจะร่างให้อัตโนมัติทุกเช้า 05:30 น. หรือกด “แก้ไข” เพื่อสร้างตอนนี้</p>}
+            <div className="phone" style={{ background: "linear-gradient(160deg,#1e3a8a,#2563eb)" }}>
+              <div style={{ color: "#fff", fontWeight: 800, fontSize: 17 }}>{daily.headline}</div>
+              {dItems.map((i, k) => <div key={k} className="bubble" style={{ borderRadius: 14, maxWidth: "100%" }}>{i.emoji} {i.text}</div>)}
+            </div>
+          ) : <span className="hint">ระบบร่างให้อัตโนมัติทุกเช้า 05:30 น.</span>}
+          {todayClasses.length > 0 && <div className="hint" style={{ marginTop: 10 }}>วันนี้มี {todayClasses.length} คาบในตาราง</div>}
         </div>
-        <div className="card">
-          <div className="row" style={{ justifyContent: "space-between" }}><b>⏰ ใกล้เดดไลน์</b><Link className="btn btn-sm" href="/admin/announcements">ประกาศทั้งหมด</Link></div>
-          {soon.length === 0 && openForms.filter((f) => f.deadline_at).length === 0 ? <p className="hint">ไม่มีเดดไลน์ที่กำลังจะมาถึง</p> : (
-            <table style={{ marginTop: 8 }}><tbody>
-              {soon.map((a) => <tr key={a.id}><td><b>{a.title}</b></td><td className="hint">{thDateTime(a.deadline_at)}</td><td><span className="badge b-warn">{relativeTh(a.deadline_at)}</span></td></tr>)}
-              {openForms.filter((f) => f.deadline_at && new Date(f.deadline_at).getTime() > Date.now()).map((f) => <tr key={f.form_id}><td><b>📝 {f.name}</b></td><td className="hint">{thDateTime(f.deadline_at!)}</td><td><span className="badge b-warn">{relativeTh(f.deadline_at!)}</span></td></tr>)}
-            </tbody></table>
-          )}
-          <div className="hint" style={{ marginTop: 10 }}>ระบบจะร่างข้อความเตือน (ก่อน 3 วัน · 1 วัน · เช้าวันจริง) เข้ากล่องรอตรวจ และทักคุณใน LINE ให้พิมพ์ approve</div>
-        </div>
-      </div>
-
-      <div className="grid g2" style={{ marginTop: 18 }}>
-        <div className="card">
-          <b>📱 แอปสมาชิก</b>
-          <p className="hint">เพื่อน ๆ เปิดจากเมนู LINE ได้ที่ <b>liff.line.me/2011755768-aSlCqo7l</b> · วันนี้มีคาบเรียน {todayClasses} คาบในระบบ</p>
-          <div className="row"><a className="btn btn-primary btn-sm" href="/app?preview=6801101071" target="_blank" rel="noreferrer">ดูแอปแบบพรีวิว</a><Link className="btn btn-sm" href="/admin/members">ใครเปิดแอปแล้วบ้าง</Link></div>
-        </div>
-        <div className="card">
-          <b>🧭 เริ่มจากตรงไหนดี</b>
-          <ol className="hint" style={{ margin: "8px 0 0", paddingLeft: 18, lineHeight: 1.9 }}>
-            <li>ประกาศใหม่ → เมนู <b>ประกาศ</b> (วางข้อความจากกลุ่มได้เลย AI จัดให้)</li>
-            <li>ตารางเรียน block ใหม่ → <b>ตารางเรียน & สอบ</b> → อัปโหลดไฟล์</li>
-            <li>เงินรุ่น → ให้ฝ่ายการเงินใช้เมนู <b>การเงิน</b> (มีรหัสผ่านของตัวเอง)</li>
-            <li>ข้อความจะส่งถึงเพื่อน ๆ ต่อเมื่อคุณ <b>อนุมัติ</b> เท่านั้น</li>
-          </ol>
+        <div className="list" style={{ alignSelf: "start" }}>
+          {[
+            { href: "/admin/announcements", icon: Megaphone, tone: "blue" as Tone, t: "ประกาศใหม่", s: "วางข้อความ → AI จัดให้ → ขึ้นแอป/ส่ง LINE" },
+            { href: "/admin/schedule", icon: Upload, tone: "indigo" as Tone, t: "อัปโหลดตารางเรียน", s: "ไฟล์ PDF/รูป → AI อ่านเป็นตาราง" },
+            { href: "/admin/forms", icon: CheckCircle2, tone: "green" as Tone, t: "สิ่งที่ต้องกรอก", s: "ดูว่าใครยังไม่ได้กรอก" },
+            { href: "/admin/academic", icon: GraduationCap, tone: "purple" as Tone, t: "ตรวจจำข้อสอบ", s: "อัปโหลดใบแบ่งข้อ + เอกสาร" },
+            { href: "/admin/finance", icon: Wallet, tone: "teal" as Tone, t: "เงินรุ่น", s: "ใครจ่ายแล้ว · สลิป · เตือน" },
+          ].map((x) => (
+            <Link key={x.href} href={x.href} className="li"><Sq icon={x.icon} tone={x.tone} /><div className="li-b"><b>{x.t}</b><small>{x.s}</small></div><ChevronRight className="chev" size={18} /></Link>
+          ))}
         </div>
       </div>
     </div>

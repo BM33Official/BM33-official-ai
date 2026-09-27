@@ -18,9 +18,13 @@
     "@google/genai": "latest",
     "@line/bot-sdk": "latest",
     "googleapis": "^173.0.0",
+    "lucide-react": "^1.48.0",
+    "mammoth": "^1.13.0",
     "next": "14.2.35",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sharp": "^0.35.4",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

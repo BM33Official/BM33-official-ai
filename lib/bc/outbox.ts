@@ -51,6 +51,8 @@ export function audienceLabel(audience: string): string {
 
 export async function createOutbox(input: {
   kind: string; ref_id?: string; title: string; audience: string; messages: Msg[]; preview: string; expires_at?: string; notify?: boolean;
+  // ข้อความเฉพาะคน (key = student id) — เช่น เตือน red zone / เงินค้างที่ใส่ยอดของแต่ละคน
+  perRecipient?: Record<string, Msg[]>;
 }): Promise<OutboxItem> {
   // กันซ้ำ: ref เดียวกันที่ยังรออยู่ ไม่สร้างใหม่
   if (input.ref_id) {
@@ -63,7 +65,7 @@ export async function createOutbox(input: {
     ref_id: input.ref_id ?? "",
     title: input.title,
     audience: input.audience,
-    messages: JSON.stringify(input.messages.slice(0, 5)),
+    messages: input.perRecipient ? JSON.stringify({ per: input.perRecipient }) : JSON.stringify(input.messages.slice(0, 5)),
     preview: input.preview.slice(0, 4000),
     status: "pending",
     code: await nextCode(),
@@ -139,9 +141,14 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
     return { ok: false, count: 0, error: "หมดเวลาแล้ว (เลยเดดไลน์)", item };
   }
   let messages: Msg[] = [];
-  try { messages = JSON.parse(item.messages || "[]"); } catch { /* ignore */ }
-  if (!messages.length) return { ok: false, count: 0, error: "ไม่มีข้อความ", item };
-  const recipients = (await resolveAudience(item.audience)).map((m) => m.line_user_id).filter(Boolean);
+  let per: Record<string, Msg[]> | null = null;
+  try {
+    const v = JSON.parse(item.messages || "[]");
+    if (Array.isArray(v)) messages = v; else if (v && v.per) per = v.per;
+  } catch { /* ignore */ }
+  if (!messages.length && !per) return { ok: false, count: 0, error: "ไม่มีข้อความ", item };
+  const members = await resolveAudience(item.audience);
+  const recipients = members.map((m) => m.line_user_id).filter(Boolean);
   if (!recipients.length) {
     await patchRecord("outbox", item.__row, item as never, { status: "sent", decided_at: nowISO(), sent_at: nowISO(), result: "no_recipients" });
     return { ok: true, count: 0, item };
@@ -152,7 +159,14 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
   }
   await patchRecord("outbox", item.__row, item as never, { status: "approved", decided_at: nowISO(), result: `by ${by}` });
   try {
-    await multicastTo(recipients, messages);
+    if (per) {
+      for (const m of members) {
+        const msgs = per[digits(m.matched_student_id)];
+        if (m.line_user_id && msgs?.length) await pushTo(m.line_user_id, msgs.slice(0, 5));
+      }
+    } else {
+      await multicastTo(recipients, messages);
+    }
   } catch (err) {
     const fresh = (await readOutbox(true)).find((o) => o.id === item.id);
     if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "failed", result: String(err).slice(0, 300) });

@@ -1,4 +1,56 @@
-# BM33 v2 — TODO (source of truth)
+# BM33 v3 — TODO (source of truth · started 2026-09-27)
+
+Legend: `[x]` done & verified · `[~]` in progress · `[ ]` not started
+
+## v3 goals (user request 2026-09-27)
+- AI must fit **$10/month** for ~100 users with the same accuracy → retrieval instead of full-sheet prompt, metering, budget guard
+- LINE groups: bot is **silent** (never replies, even when tagged) — only listens
+- Import the two chat exports (main group + OpenChat, up to 27 Sep 2026) into the knowledge base; publish current announcements
+- ฟอร์ม & งาน → **สิ่งที่ต้องกรอก**, auto-filled from announcements (admin only checks/edits/adds misses)
+- Finance: remove "waived", one place to remind unpaid (via approval), slip verification (AI reads slip → finance confirms)
+- Academic: upload assignment sheet + recall doc → AI ticks who recalled, shared question missing → all assignees red zone; simple wizard UI
+- Role links: finance / academic get a private link that opens only their page (+ password)
+- Control center: visual, Apple-like, less text; merge ประกาศบนแอป + บรอดแคสต์; clearer inbox; calendar for daily; AI budget meter
+- Member app: announcements first on home, compact countdown, more visual, merge ประกาศ tab into home, ของฉัน = private details
+- Rich menu: 6 distinct colours, big icons, LinkTree วิชาการ (https://linktr.ee/BM33AcademicLinks); profile icon for OA/OpenChat
+
+## A. AI cost
+- [x] Corpus + BM25 (char-trigram Thai) retrieval over all knowledge tabs + chat imports (`lib/ai/corpus.ts`)
+- [x] Compact live "core" block (`lib/ai/core.ts`); directory only via retrieval for verified askers
+- [x] Deterministic answers (`lib/ai/intents.ts`: greet/thanks, classes today/tomorrow, next exam, my fees, my red zone) = 0 tokens
+- [x] Answer cache for non-personal questions (6 h)
+- [x] Escalation pass only when the model returns `search_terms`
+- [x] Usage metering (`BC_usage`), budget/price/cap from config, lean (≥80%) / off (≥100%) modes
+- [x] Group: never replies; image captions only from committee, burst-limited, normal mode only
+- [ ] **Verify on production** `/admin/ai` → ลองถามบอท (route badge + cost) after deploy (no Gemini key locally)
+## B. Knowledge import
+- [x] Both exports → `KB_แชตรุ่น` (2025-03-29 → 2026-09-27) · upload more from `/admin/ai` (gzip upload route)
+- [x] 12 current announcements published (seed script) · committee year 2 + ไบร์ท (วิชาการ) + แบง (การเงิน)
+## C. สิ่งที่ต้องกรอก
+- [x] Auto-created from announcements with form links (`syncFormFromAnnouncement`) · page with rings + per-person dots + "เตือนคนที่ยังไม่กรอก" (→ outbox) · home section in app with tap-to-claim
+## D. Finance
+- [x] Waived removed from UI · `finance.remindUnpaid` per-person outbox · slip upload in app (`/api/app/slip`) + slip image in DM → AI verdict → finance ✓/✕ queue
+- [x] Optional auto-approve (`slip_auto_approve`) for slips that pass every check — default OFF
+- [ ] **User:** fill ชื่อบัญชีผู้รับ + เลขบัญชี on `/admin/finance` (AI needs them to verify receiver) and set real fee months
+## E. Academic
+- [x] Recall wizard: assignment (file/link/modulo/keep) + recall docs → `/admin/api/recall` (AI, rule fallback) → question strip + 100-dot proof grid → `academic.saveCheck`
+- [x] Academic messages now go to the outbox (approval) instead of direct push (also the scheduled doc reminder)
+## F. Access
+- [x] Magic links `/admin/k/<role>.<sig>` (Settings → ลิงก์เข้าตรง, copy button; HMAC uses prod secret so copy them from production) · academic password in `academic-password.secret.local`
+## G. Control center redesign
+- [x] iOS-style kit (`app/admin/ui/kit.tsx`, `admin.css`) · วันนี้ · รออนุมัติ · ประกาศ (merged with LINE send) · ปฏิทิน & สรุปวันนี้ (month calendar) · สิ่งที่ต้องกรอก · ตาราง · การเงิน · วิชาการ · สมาชิก · AI & งบ (graphs) · ตั้งค่า
+## H. Member app redesign
+- [x] 4 tabs (หน้าหลัก · ตาราง · เซียมซี · ของฉัน) · home = announcements-first feed (hero + list, category colours), compact countdown pill, สิ่งที่ต้องกรอก, today · ของฉัน = private profile (3 rings, fees + slip upload, red zone, draws, contacts) · old `?tab=news` links → home
+## I. Rich menu v3 + profile icon
+- [x] `public/rich-menu-v3.jpg` + `rich-menu/rich-menu.v3.json` (6 colours + LinkTree + ถาม AI strip) · Settings → เมนู LINE → สร้าง → ลองกับบัญชีฉัน
+- [ ] **User:** press "เปิดใช้กับทุกคน" after trying it · upload `rich-menu/bm33-profile-icon.png` as the OA / OpenChat profile picture (LINE OA Manager → Settings → Profile)
+## J. Verify / ship
+- [x] typecheck · build · local screenshots (admin + app via fixture) · `scripts/test-flows.ts` 22/22
+- [ ] Deploy (push main) → test AI + recall + slip on production
+
+---
+
+# (archive) BM33 v2 — TODO
 
 Branch: `portal-v2` (merge to `main` only after typecheck + build + local verification).
 Legend: `[x]` done & verified · `[~]` in progress · `[ ]` not started

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AppData } from "./useApp";
 import type { TabKey } from "./Chrome";
 import { initialOf } from "./Chrome";
-import { IChevronR, IClock, IPin, IWallet, IDoc, IShield, ISpark } from "./icons";
-import { bkkParts, bkkDayKey, countdownParts, thDateTime, relativeTh, dayDiff, TH_DAYS, TH_MONTHS } from "@/lib/time";
+import { haptic } from "./useApp";
+import { IChevronR, IClock, IWallet, IShield, ISpark, ICheck, ILink } from "./icons";
+import { bkkParts, bkkDayKey, countdownParts, relativeTh, agoTh, TH_DAYS, TH_MONTHS } from "@/lib/time";
 
 export function useNow(ms = 1000, active = true) {
   const [now, setNow] = useState(() => Date.now());
@@ -49,199 +50,224 @@ export function DeadlineChip({ iso, now, prefix = "" }: { iso: string; now: numb
 
 const WHERE = (b: string, r: string) => [b, r && (/\d/.test(r) ? `ห้อง ${r}` : r)].filter(Boolean).join(" · ");
 
+// สี + อีโมจิของแต่ละหมวดประกาศ (ให้แยกด้วยตาได้ทันทีโดยไม่ต้องอ่าน)
+export const CAT: Record<string, { em: string; c1: string; c2: string }> = {
+  "ด่วน": { em: "🚨", c1: "#ff5f6d", c2: "#c81d4e" },
+  "การเงิน": { em: "💸", c1: "#34d399", c2: "#059669" },
+  "วิชาการ": { em: "📚", c1: "#818cf8", c2: "#4f46e5" },
+  "กิจกรรม": { em: "🎉", c1: "#f472b6", c2: "#c026d3" },
+  "ฟอร์ม/เอกสาร": { em: "📝", c1: "#fbbf24", c2: "#d97706" },
+  "ทั่วไป": { em: "📣", c1: "#60a5fa", c2: "#2563eb" },
+};
+export const catOf = (c: string) => CAT[c] ?? CAT["ทั่วไป"];
+type Ann = AppData["board"]["announcements"][number];
+
 export default function Home({
-  data, active, picture, openAnn, go,
+  data, active, picture, openAnn, go, claimForm,
 }: {
   data: AppData; active: boolean; picture: string;
-  openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void;
+  openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string) => Promise<void>;
 }) {
   const now = useNow(1000, active);
   const { board, mine } = data;
   const p = bkkParts(now);
   const today = bkkDayKey(now);
+  const [cat, setCat] = useState("ทั้งหมด");
+  const [more, setMore] = useState(false);
+  const [showDone, setShowDone] = useState(false);
   const nextExam = board.exams.find((e) => new Date(e.at).getTime() > now - 3 * 3600_000);
   const todays = board.schedule.filter((s) => s.date === today);
   const tomorrowKey = bkkDayKey(now + 86_400_000);
   const tomorrows = board.schedule.filter((s) => s.date === tomorrowKey);
-  const undone = mine.forms.filter((f) => f.state !== "done").length;
-  const zone = mine.zone;
   const fees = mine.fees;
-  const latest = board.announcements.slice(0, 6);
+  const zone = mine.zone;
+
+  // ประกาศ: ปักหมุด/ใกล้เดดไลน์ขึ้นก่อน
+  const score = (a: Ann) => (a.pinned ? 4 : 0) + (a.deadline_at && ["urgent", "soon"].includes(deadlineTone(a.deadline_at, now)) ? 2 : 0);
+  const all = useMemo(() => [...board.announcements].sort((a, b) => score(b) - score(a) || b.created_at.localeCompare(a.created_at)), [board.announcements, Math.floor(now / 60_000)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cats = ["ทั้งหมด", ...Array.from(new Set(board.announcements.map((a) => a.category)))];
+  const list = all.filter((a) => cat === "ทั้งหมด" || a.category === cat);
+  const [hero, ...rest] = list;
+  const shown = more ? rest : rest.slice(0, 4);
+
+  // สิ่งที่ต้องกรอก
+  const stateOf = (id: string) => mine.forms.find((f) => f.id === id)?.state ?? "none";
+  const forms = [...board.forms].sort((a, b) => (a.deadline_at || "9").localeCompare(b.deadline_at || "9"));
+  const todo = forms.filter((f) => stateOf(f.id) !== "done");
+  const done = forms.filter((f) => stateOf(f.id) === "done");
 
   return (
-    <div className="col stagger">
-      <div className="hello">
+    <div className="col feed">
+      <header className="hello">
         <div>
           <div className="when">{`วัน${TH_DAYS[p.dow]}ที่ ${p.d} ${TH_MONTHS[p.m]}`}</div>
-          <h1>{greeting(now)},<br />{mine.me.nickname} 👋</h1>
+          <h1>{greeting(now)} {mine.me.nickname}</h1>
         </div>
         <button className="avatar press" onClick={() => go("me")} aria-label="ของฉัน">
           {picture ? <img src={picture} alt="" /> : initialOf(mine.me.nickname)}
         </button>
+      </header>
+
+      {/* แถบสั้นบนสุด: สอบถัดไป + สถานะส่วนตัว (แตะไปหน้าที่เกี่ยวข้อง) */}
+      <div className="pills">
+        {nextExam && (
+          <button className="pill exam press" onClick={() => go("schedule")}>
+            <IClock width={15} height={15} />
+            <span className="ellipsis">{nextExam.name}</span>
+            <b><Countdown iso={nextExam.at} now={now} /></b>
+          </button>
+        )}
+        {fees.months.length > 0 && (
+          <button className={`pill press ${fees.overdue ? "bad" : fees.outstanding ? "warn" : "ok"}`} onClick={() => go("me", "fees")}>
+            <IWallet width={15} height={15} />{fees.outstanding > 0 ? `ค้าง ${fees.outstanding.toLocaleString()}฿` : "เงินรุ่นครบ"}
+          </button>
+        )}
+        <button className={`pill press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
+          <IShield width={15} height={15} />{zone.title}
+        </button>
       </div>
 
-      {board.notice && (
-        <div className="notice glass tint-gold"><span>📣</span><span className="selectable">{board.notice}</span></div>
+      {board.notice && <div className="notice"><span>📣</span><span className="selectable">{board.notice}</span></div>}
+
+      {/* ── ประกาศ (สำคัญที่สุด) ── */}
+      <div className="sect big"><h2>ประกาศ</h2><span className="muted small b">{board.announcements.length} เรื่อง</span></div>
+      {cats.length > 2 && (
+        <div className="hscroll chips-row">
+          {cats.map((c) => (
+            <button key={c} className={`fchip ${cat === c ? "on" : ""}`} onClick={() => { haptic(); setCat(c); setMore(false); }}>
+              {c !== "ทั้งหมด" && <span>{catOf(c).em}</span>}{c}
+            </button>
+          ))}
+        </div>
+      )}
+      {hero ? (
+        <>
+          <button className="hero press" onClick={() => openAnn(hero.id)} style={{ background: `linear-gradient(150deg, ${catOf(hero.category).c1}, ${catOf(hero.category).c2})` }}>
+            <div className="hero-em" aria-hidden>{catOf(hero.category).em}</div>
+            <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+              <span className="hero-cat">{hero.pinned ? "📌 " : ""}{hero.category}</span>
+              {(hero.deadline_at || hero.event_at) && <DeadlineChip iso={hero.deadline_at || hero.event_at} now={now} prefix={hero.deadline_at ? "ปิด " : ""} />}
+            </div>
+            <div className="hero-ttl">{hero.title}</div>
+            {hero.summary && <div className="hero-sum clamp3">{hero.summary}</div>}
+            <div className="hero-by">{hero.author || "กรรมการรุ่น"}{hero.author_role ? ` · ${hero.author_role}` : ""} · {agoTh(hero.created_at, now)}</div>
+          </button>
+          <div className="feed-list">
+            {shown.map((a) => <FeedRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} />)}
+          </div>
+          {rest.length > 4 && (
+            <button className="linkbtn" onClick={() => { haptic(); setMore((v) => !v); }}>{more ? "ย่อ" : `ดูประกาศทั้งหมด (${list.length})`}</button>
+          )}
+        </>
+      ) : <div className="empty"><div className="big">📭</div>ยังไม่มีประกาศตอนนี้</div>}
+
+      {/* ── สิ่งที่ต้องกรอก ── */}
+      {forms.length > 0 && (
+        <>
+          <div className="sect big">
+            <h2>สิ่งที่ต้องกรอก</h2>
+            <span className="progress-mini"><i style={{ width: `${(done.length / forms.length) * 100}%` }} /></span>
+            <span className="muted small b">{done.length}/{forms.length}</span>
+          </div>
+          {todo.length === 0 && <div className="allclear">🎉 กรอกครบทุกอย่างแล้ว</div>}
+          <div className="feed-list">
+            {todo.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} now={now} onClaim={() => claimForm(f.id)} preview={!!data.preview} />)}
+          </div>
+          {done.length > 0 && (
+            <>
+              <button className="linkbtn" onClick={() => setShowDone((v) => !v)}>✓ กรอกแล้ว {done.length} รายการ {showDone ? "▴" : "▾"}</button>
+              {showDone && <div className="feed-list">{done.map((f) => <TodoRow key={f.id} f={f} state="done" now={now} onClaim={async () => {}} preview />)}</div>}
+            </>
+          )}
+        </>
       )}
 
-      <div className="home-grid">
-        <div>
-          {/* นับถอยหลังสอบ */}
-          <section className="glass countdown tint-blue">
-            <div className="orb" />
-            {nextExam ? (
-              <>
-                <div className="label">นับถอยหลังสอบ</div>
-                <div className="name">{nextExam.name}</div>
-                <Digits iso={nextExam.at} now={now} />
-                <div className="meta">
-                  <span className="chip"><IClock width={13} height={13} />{thDateTime(nextExam.at)}{nextExam.end ? `–${nextExam.end}` : ""}</span>
-                  {(nextExam.building || nextExam.room) && <span className="chip"><IPin width={13} height={13} />{WHERE(nextExam.building, nextExam.room)}</span>}
+      {/* ── วันนี้ ── */}
+      <div className="sect big"><h2>{todays.length ? "วันนี้เรียน" : tomorrows.length ? "พรุ่งนี้เรียน" : "วันนี้"}</h2><button className="more" onClick={() => go("schedule")}>ตารางทั้งหมด</button></div>
+      {(todays.length ? todays : tomorrows).length ? (
+        <div className="timeline">
+          {(todays.length ? todays : tomorrows.slice(0, 5)).map((s) => {
+            const st = new Date(`${s.date}T${s.start || "00:00"}:00+07:00`).getTime();
+            const en = new Date(`${s.date}T${s.end || s.start || "23:59"}:00+07:00`).getTime();
+            const live = now >= st && now <= en;
+            return (
+              <div key={s.id} className={`tl ${live ? "now" : ""}`} style={{ opacity: now > en ? 0.5 : 1 }}>
+                <div className="time">{s.start}<small>{s.end}</small></div>
+                <div className="body">
+                  <div className="subj">{s.subject}{live && <span className="chip done" style={{ marginLeft: 8, height: 22 }}>กำลังเรียน</span>}</div>
+                  {(s.topic || s.building || s.room) && <div className="soft small" style={{ marginTop: 2 }}>{[s.topic, WHERE(s.building, s.room)].filter(Boolean).join(" · ")}</div>}
                 </div>
-              </>
-            ) : (
-              <>
-                <div className="label">นับถอยหลังสอบ</div>
-                <div className="name">ยังไม่มีสอบในระบบ</div>
-                <p className="soft small" style={{ margin: 0 }}>พอฝ่ายวิชาการลงตารางสอบ จะเริ่มนับถอยหลังให้ตรงนี้อัตโนมัติ</p>
-              </>
-            )}
-          </section>
-
-          {/* วันนี้ */}
-          <section className="glass card">
-            <div className="row between" style={{ marginBottom: 4 }}>
-              <b style={{ fontSize: 17 }}>{todays.length ? "คาบเรียนวันนี้" : tomorrows.length ? "วันนี้ว่าง · พรุ่งนี้มีเรียน" : "วันนี้"}</b>
-              <button className="small b" style={{ color: "var(--sky)" }} onClick={() => go("schedule")}>ตารางทั้งหมด</button>
-            </div>
-            {todays.length ? (
-              <div className="timeline">
-                {todays.map((s) => {
-                  const st = new Date(`${s.date}T${s.start || "00:00"}:00+07:00`).getTime();
-                  const en = new Date(`${s.date}T${s.end || s.start || "23:59"}:00+07:00`).getTime();
-                  const live = now >= st && now <= en;
-                  return (
-                    <div key={s.id} className={`tl ${live ? "now" : ""}`} style={{ opacity: now > en ? 0.55 : 1 }}>
-                      <div className="time">{s.start}<small>{s.end}</small></div>
-                      <div className="body">
-                        <div className="subj">{s.subject}{live && <span className="chip done" style={{ marginLeft: 8, height: 22 }}>กำลังเรียน</span>}</div>
-                        {s.topic && <div className="soft small" style={{ marginTop: 2 }}>{s.topic}</div>}
-                        <div className="where">
-                          {(s.building || s.room) && <span className="chip"><IPin width={12} height={12} />{WHERE(s.building, s.room)}</span>}
-                          {s.lecturer && <span className="chip">อ.{s.lecturer}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
               </div>
-            ) : tomorrows.length ? (
-              <div className="timeline">
-                {tomorrows.slice(0, 4).map((s) => (
-                  <div key={s.id} className="tl">
-                    <div className="time">{s.start}<small>{s.end}</small></div>
-                    <div className="body"><div className="subj">{s.subject}</div>{(s.building || s.room) && <div className="where"><span className="chip"><IPin width={12} height={12} />{WHERE(s.building, s.room)}</span></div>}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="soft small" style={{ margin: "6px 0 0" }}>{board.schedule.length ? "ไม่มีคาบเรียนวันนี้และพรุ่งนี้ พักผ่อนให้เต็มที่ 🌤️" : "ยังไม่มีตารางเรียนในระบบ"}</p>
-            )}
-          </section>
-
-          {/* สรุปประจำวัน */}
-          {board.daily && (
-            <section className="glass card daily">
-              <div className="row between" style={{ marginBottom: 6 }}>
-                <span className="chip info"><ISpark width={13} height={13} />สรุปวันนี้</span>
-                <span className="tiny muted">อัปเดต {thDateTime(board.daily.updated_at || board.daily.date)}</span>
-              </div>
-              <div className="headline" style={{ margin: "6px 0 4px" }}>{board.daily.headline}</div>
-              {board.daily.items.map((it, i) => (
-                <button key={i} className="item" style={{ width: "100%", textAlign: "left" }}
-                  onClick={() => { if (it.ref && board.announcements.some((a) => a.id === it.ref)) openAnn(it.ref); else if (it.ref?.startsWith("F-")) go("news", "forms"); }}>
-                  <div className="em">{it.emoji}</div>
-                  <div>
-                    <div className="txt">{it.text}</div>
-                    {it.at && <div style={{ marginTop: 6 }}><DeadlineChip iso={it.at} now={now} /></div>}
-                  </div>
-                </button>
-              ))}
-            </section>
-          )}
+            );
+          })}
         </div>
+      ) : <div className="muted small" style={{ padding: "0 6px" }}>{board.schedule.length ? "ไม่มีเรียนวันนี้และพรุ่งนี้ พักผ่อนให้เต็มที่ 🌤️" : "ยังไม่มีตารางเรียนในระบบ"}</div>}
 
-        <div>
-          {/* สถานะของฉัน */}
-          <div className="tiles">
-            <button className={`glass tile press ${fees.overdue ? "tint-rose" : ""}`} onClick={() => go("me", "fees")}>
-              <div className="row between"><span className="t-label">เงินรุ่น</span><IWallet width={18} height={18} /></div>
-              <div>
-                <div className="t-val">{fees.months.length === 0 ? "—" : fees.outstanding > 0 ? `${fees.outstanding.toLocaleString()}฿` : "ครบ ✓"}</div>
-                <div className="t-sub">{fees.months.length === 0 ? "ยังไม่มีข้อมูล" : fees.outstanding > 0 ? (fees.overdue ? "เลยกำหนดแล้ว" : "ยังไม่ได้จ่าย") : fees.yearly ? "แพ็กรายปี" : "จ่ายครบแล้ว"}</div>
-              </div>
+      {board.daily && board.daily.items.length > 0 && (
+        <div className="daily-plain">
+          <div className="headline"><ISpark width={15} height={15} /> {board.daily.headline}</div>
+          {board.daily.items.map((it, i) => (
+            <button key={i} className="item" onClick={() => { if (it.ref && board.announcements.some((a) => a.id === it.ref)) openAnn(it.ref); }}>
+              <span className="em">{it.emoji}</span>
+              <span className="txt">{it.text}{it.at && <> <DeadlineChip iso={it.at} now={now} /></>}</span>
             </button>
-            <button className={`glass tile press ${undone ? "tint-gold" : ""}`} onClick={() => go("news", "forms")}>
-              <div className="row between"><span className="t-label">งานค้าง</span><IDoc width={18} height={18} /></div>
-              <div>
-                <div className="t-val">{undone ? `${undone} งาน` : "ไม่มี ✓"}</div>
-                <div className="t-sub">{undone ? "แตะเพื่อดู" : "เคลียร์หมดแล้ว"}</div>
-              </div>
-            </button>
-            <button className={`glass tile press ${zone.level === "red" ? "tint-rose" : zone.level === "close" ? "tint-gold" : ""}`} onClick={() => go("me", "zone")}>
-              <div className="row between"><span className="t-label">จำข้อสอบ</span><IShield width={18} height={18} /></div>
-              <div>
-                <div className="t-val" style={{ fontSize: 16 }}>{zone.title}</div>
-                <div className="t-sub">🔒 เห็นเฉพาะคุณ</div>
-              </div>
-            </button>
-          </div>
-
-          {/* ประกาศล่าสุด */}
-          <div className="sect"><h2>ประกาศล่าสุด</h2><button className="more" onClick={() => go("news")}>ดูทั้งหมด</button></div>
-          {latest.length ? (
-            <div className="hscroll">
-              {latest.map((a) => {
-                const dl = a.deadline_at || a.event_at;
-                return (
-                  <button key={a.id} className={`glass ann-mini press ${deadlineTone(a.deadline_at, now) === "urgent" ? "ann urgent" : ""}`} onClick={() => openAnn(a.id)}>
-                    <div className="row between"><span className="cat">{a.category}</span>{dl && <DeadlineChip iso={dl} now={now} />}</div>
-                    <div className="ttl clamp2">{a.title}</div>
-                    <div className="sum clamp3">{a.summary}</div>
-                    <div className="tiny muted" style={{ marginTop: "auto" }}>{a.author}{a.author_role ? ` · ${a.author_role}` : ""}</div>
-                  </button>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="glass empty">ยังไม่มีประกาศใหม่ ✨</div>
-          )}
-
-          {/* เซียมซี */}
-          <button className="glass fortune-teaser tint-gold press" onClick={() => go("fortune")}>
-            <MiniWheel />
-            <div style={{ textAlign: "left", flex: 1 }}>
-              <div className="b" style={{ fontSize: 17 }}>เซียมซีประจำวัน</div>
-              <div className="soft small" style={{ marginTop: 3 }}>
-                {mine.fortune.last_day === today ? `วันนี้เขย่าไปแล้ว · สะสม ${countOf(mine.fortune.collected)}/200` : "ใบแรกของวันการันตี “ไข่มุก” ขึ้นไป ✨"}
-              </div>
-            </div>
-            <IChevronR width={20} height={20} />
-          </button>
-
-          {tomorrows.length > 0 && todays.length > 0 && (
-            <div className="glass card">
-              <div className="row between"><b>พรุ่งนี้</b><span className="tiny muted">{tomorrows.length} คาบ · เริ่ม {tomorrows[0].start} น.</span></div>
-              <div className="soft small" style={{ marginTop: 6 }}>{tomorrows.map((s) => s.subject).filter((v, i, a) => a.indexOf(v) === i).join(" · ")}</div>
-            </div>
-          )}
-          {nextExam && dayDiff(nextExam.at, now) <= 14 && (
-            <div className="tiny muted" style={{ textAlign: "center", padding: "0 10px" }}>สู้ ๆ นะ {mine.me.nickname} อีกแค่ {Math.max(0, dayDiff(nextExam.at, now))} วันก็สอบแล้ว 💙</div>
-          )}
+          ))}
         </div>
-      </div>
+      )}
+
+      <button className="fortune-row press" onClick={() => go("fortune")}>
+        <MiniWheel size={46} />
+        <div style={{ flex: 1, textAlign: "left" }}>
+          <div className="b">เซียมซีประจำวัน</div>
+          <div className="muted small">{mine.fortune.last_day === today ? `วันนี้เขย่าแล้ว · สะสม ${countOf(mine.fortune.collected)}/200` : "ใบแรกของวันการันตี “ไข่มุก” ขึ้นไป ✨"}</div>
+        </div>
+        <IChevronR width={18} height={18} />
+      </button>
     </div>
   );
+}
+
+function FeedRow({ a, now, onOpen }: { a: Ann; now: number; onOpen: () => void }) {
+  const c = catOf(a.category);
+  const dl = a.deadline_at || a.event_at;
+  return (
+    <button className="frow press" onClick={onOpen}>
+      <span className="fic" style={{ background: `linear-gradient(150deg, ${c.c1}, ${c.c2})` }}>{c.em}</span>
+      <span className="fbody">
+        <span className="ftitle clamp2">{a.pinned ? "📌 " : ""}{a.title}</span>
+        {a.summary && <span className="fsum clamp2">{a.summary}</span>}
+        <span className="fmeta">{dl ? <DeadlineChip iso={dl} now={now} prefix={a.deadline_at ? "ปิด " : ""} /> : null}<span>{a.author || "กรรมการรุ่น"} · {agoTh(a.created_at, now)}</span></span>
+      </span>
+    </button>
+  );
+}
+
+function TodoRow({ f, state, now, onClaim, preview }: { f: AppData["board"]["forms"][number]; state: string; now: number; onClaim: () => Promise<void>; preview: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const isDone = state === "done";
+  return (
+    <div className={`frow todo ${isDone ? "done" : ""}`}>
+      <button className={`check ${isDone ? "on" : state === "claimed" ? "half" : ""}`} disabled={isDone || state === "claimed" || preview || busy} aria-label="ฉันกรอกแล้ว"
+        onClick={async () => { haptic(); setBusy(true); await onClaim(); setBusy(false); }}>
+        {isDone || state === "claimed" ? <ICheck width={16} height={16} /> : null}
+      </button>
+      <span className="fbody">
+        <span className="ftitle">{f.name}</span>
+        {f.description && !isDone && <span className="fsum clamp2">{f.description}</span>}
+        <span className="fmeta">
+          {state === "claimed" ? <span className="chip violet">รอกรรมการยืนยัน</span> : !isDone && f.deadline_at ? <DeadlineChip iso={f.deadline_at} now={now} prefix="ปิด " /> : null}
+          {!isDone && state !== "claimed" && <span>กรอกแล้วแตะวงกลม</span>}
+        </span>
+      </span>
+      {!isDone && f.link && <a className="btn sm" href={f.link} target="_blank" rel="noopener noreferrer"><ILink width={14} height={14} />กรอก</a>}
+    </div>
+  );
+}
+
+function Countdown({ iso, now }: { iso: string; now: number }) {
+  const c = countdownParts(iso, now);
+  if (c.d > 0) return <>{c.d} วัน {String(c.h).padStart(2, "0")}:{String(c.m).padStart(2, "0")}</>;
+  return <>{String(c.h).padStart(2, "0")}:{String(c.m).padStart(2, "0")}:{String(c.s).padStart(2, "0")}</>;
 }
 
 function countOf(b64: string): number {

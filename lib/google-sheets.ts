@@ -150,6 +150,11 @@ export async function batchUpdateRanges(
   );
 }
 
+// ล้างค่าในช่วง (ใช้ตอนเขียนทับทั้งแท็บ เช่น คลังแชตที่นำเข้าใหม่)
+export async function clearRange(range: string): Promise<void> {
+  await withRetry(() => client().spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range }));
+}
+
 export function colLetter(n: number): string {
   let s = "";
   while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }

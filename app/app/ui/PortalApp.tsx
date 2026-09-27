@@ -1,23 +1,24 @@
 "use client";
-// แอปสมาชิก BM33 — โครงหลัก: พื้นหลังน้ำไหล + 5 แท็บ + sheet + overlay การสุ่ม
+// แอปสมาชิก BM33 — โครงหลัก: พื้นหลังน้ำไหล + 4 แท็บ (หน้าหลัก = ประกาศ/สิ่งที่ต้องกรอก/วันนี้ · ของฉัน = เรื่องส่วนตัว) + sheet + overlay การสุ่ม
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FluidBackground from "./FluidBackground";
 import { useApp, haptic } from "./useApp";
 import { TabBar, TabKey, TABS, Sheet, Toast } from "./Chrome";
 import Home, { useNow } from "./Home";
-import News, { AnnouncementDetail } from "./News";
+import { AnnouncementDetail } from "./News";
 import Schedule from "./Schedule";
 import Me from "./Me";
 import FortuneScreen from "./fortune/Fortune";
 import { DrawOverlay, Splash, ConfirmScreen, RegisterScreen, OutsideLine } from "./Overlays";
 
-const TAB_TITLE: Record<TabKey, string> = { home: "BM33", news: "ประกาศ", schedule: "ตาราง", me: "ของฉัน", fortune: "เซียมซี" };
+const TAB_TITLE: Record<TabKey, string> = { home: "BM33", schedule: "ตาราง", me: "ของฉัน", fortune: "เซียมซี" };
+// ลิงก์เก่า (?tab=news / todo) -> หน้าหลัก
+const TAB_ALIAS: Record<string, TabKey> = { news: "home", todo: "home", tasks: "home", forms: "home", fees: "me", zone: "me" };
 
 export default function PortalApp() {
   const app = useApp();
   const { phase, data } = app;
   const [tab, setTab] = useState<TabKey>("home");
-  const [newsSection, setNewsSection] = useState<"ann" | "forms">("ann");
   const [meSection, setMeSection] = useState<string | undefined>();
   const [openId, setOpenId] = useState<string | null>(null);
   const [energy, setEnergy] = useState(0);
@@ -33,8 +34,10 @@ export default function PortalApp() {
     const read = () => {
       const u = new URL(window.location.href);
       const inner = new URLSearchParams((u.searchParams.get("liff.state") ?? "").replace(/^[^?]*\?/, ""));
-      const t = (u.searchParams.get("tab") ?? inner.get("tab")) as TabKey | null;
+      const raw = u.searchParams.get("tab") ?? inner.get("tab") ?? "";
+      const t = (TAB_ALIAS[raw] ?? raw) as TabKey;
       if (t && TABS.some((x) => x.key === t)) setTab(t);
+      if (raw === "fees" || raw === "zone") setMeSection(raw);
       const ann = u.searchParams.get("a") ?? inner.get("a");
       if (ann) setOpenId(ann);
     };
@@ -55,7 +58,6 @@ export default function PortalApp() {
 
   const go = useCallback((t: TabKey, section?: string) => {
     haptic();
-    if (t === "news" && (section === "forms" || section === "ann")) setNewsSection(section);
     if (t === "me") setMeSection(section);
     if (t === tab) screens.current[t]?.scrollTo({ top: 0, behavior: "smooth" });
     setTab(t);
@@ -69,11 +71,8 @@ export default function PortalApp() {
 
   const badges = useMemo(() => {
     if (!data) return {};
-    const urgentAnn = data.board.announcements.some((a) => a.deadline_at && new Date(a.deadline_at).getTime() - now < 2 * 86_400_000 && new Date(a.deadline_at).getTime() > now);
-    const undone = data.mine.forms.some((f) => f.state === "none");
     const today = new Date(now + 7 * 3600_000).toISOString().slice(0, 10);
     return {
-      news: urgentAnn || undone,
       me: data.mine.fees.overdue > 0,
       fortune: data.mine.fortune.last_day !== today,
     } as Partial<Record<TabKey, boolean>>;
@@ -104,10 +103,7 @@ export default function PortalApp() {
 
       <main className="shell">
         <section ref={(el) => { screens.current.home = el; }} className={`screen ${tab === "home" ? "active" : ""}`} aria-hidden={tab !== "home"}>
-          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} />
-        </section>
-        <section ref={(el) => { screens.current.news = el; }} className={`screen ${tab === "news" ? "active" : ""}`} aria-hidden={tab !== "news"}>
-          <News data={data} active={tab === "news"} openAnn={setOpenId} section={newsSection} setSection={setNewsSection} claimForm={claimForm} />
+          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} />
         </section>
         <section ref={(el) => { screens.current.schedule = el; }} className={`screen ${tab === "schedule" ? "active" : ""}`} aria-hidden={tab !== "schedule"}>
           <Schedule data={data} active={tab === "schedule"} />
@@ -119,7 +115,7 @@ export default function PortalApp() {
           />
         </section>
         <section ref={(el) => { screens.current.me = el; }} className={`screen ${tab === "me" ? "active" : ""}`} aria-hidden={tab !== "me"}>
-          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} />
+          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} />
         </section>
       </main>
 

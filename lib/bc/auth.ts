@@ -110,3 +110,22 @@ export function roleCan(role: Role, action: string): boolean {
   if (role === "admin") return true;
   return ROLE_ACTIONS[role].some((p) => action.startsWith(p));
 }
+
+
+// ── ลิงก์เข้าตรง (ส่งให้ฝ่ายการเงิน/วิชาการ) — เปิดแล้วเข้าหน้าของฝ่ายตัวเองได้เลย ไม่ต้องพิมพ์รหัส
+// ผูกกับรหัสผ่านปัจจุบัน: เปลี่ยนรหัสเมื่อไร ลิงก์เก่าใช้ไม่ได้ทันที
+export async function accessLink(role: Exclude<Role, "admin">, base: string): Promise<string | null> {
+  const creds = await credHashes();
+  if (!creds[role]) return null;
+  const sig = createHmac("sha256", secret()).update(`link|${role}|${creds[role]}`).digest("base64url").slice(0, 32);
+  return `${base.replace(/\/$/, "")}/admin/k/${role}.${sig}`;
+}
+export async function tokenForLink(t: string): Promise<{ token: string; role: Role } | null> {
+  const [role, sig] = t.split(".") as [Role, string];
+  if (role !== "finance" && role !== "academic") return null;
+  const creds = await credHashes();
+  if (!creds[role] || !sig) return null;
+  const want = createHmac("sha256", secret()).update(`link|${role}|${creds[role]}`).digest("base64url").slice(0, 32);
+  if (want.length !== sig.length || !timingSafeEqual(Buffer.from(want), Buffer.from(sig))) return null;
+  return { token: `${role}.${sign(role, creds[role])}`, role };
+}

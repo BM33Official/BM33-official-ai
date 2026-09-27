@@ -224,28 +224,29 @@ function docMessage(exam?: Exam | null, unfilled = false, opts?: AcademicOpts): 
   return msg;
 }
 
-export interface AcademicSendResult { ok: boolean; count: number; testMode: boolean; sample?: string; error?: string }
+export interface AcademicSendResult { ok: boolean; count: number; testMode: boolean; sample?: string; error?: string; code?: string }
 
+// testMode = ส่งตัวอย่างให้แอดมินเท่านั้น · ไม่ใช่ testMode = ร่างข้อความเฉพาะคนไป "รออนุมัติ" (ไม่ส่งตรงถึงเพื่อนเด็ดขาด)
 export async function academicBroadcast(
   mode: AcademicMode, testMode: boolean, adminIds: string[], exam?: Exam | null, opts?: AcademicOpts
 ): Promise<AcademicSendResult> {
-  let targets: { lineUserId: string; msg: string }[] = [];
+  let targets: { sid: string; lineUserId: string; msg: string }[] = [];
 
   if (mode === "doc") {
     if (!exam?.doc_link) return { ok: false, count: 0, testMode, error: "no_doc_link" };
     const msg = docMessage(exam, false, opts);
-    targets = (await verifiedMembers()).map((m) => ({ lineUserId: m.line_user_id, msg }));
+    targets = (await verifiedMembers()).map((m) => ({ sid: digits(m.matched_student_id), lineUserId: m.line_user_id, msg }));
   } else if (mode === "doc_unfilled") {
     if (!exam?.doc_link) return { ok: false, count: 0, testMode, error: "no_doc_link" };
     const msg = docMessage(exam, true, opts);
-    const recips = await membersInSet(idList(exam.not_filled_ids ?? ""));
-    targets = recips.map((r) => ({ lineUserId: r.lineUserId, msg }));
+    const set = new Set(idList(exam.not_filled_ids ?? "").map(digits));
+    targets = (await verifiedMembers()).filter((m) => set.has(digits(m.matched_student_id))).map((m) => ({ sid: digits(m.matched_student_id), lineUserId: m.line_user_id, msg }));
   } else {
     const { rows, size } = await ranking();
     targets = rows
       .map((r) => ({ r, msg: messageFor(mode, r, opts, size) }))
       .filter((x) => x.msg && x.r.lineUserId)
-      .map((x) => ({ lineUserId: x.r.lineUserId, msg: x.msg! }));
+      .map((x) => ({ sid: digits(x.r.student_id), lineUserId: x.r.lineUserId, msg: x.msg! }));
   }
 
   if (targets.length === 0) return { ok: false, count: 0, testMode, error: "no_recipients" };
@@ -254,13 +255,20 @@ export async function academicBroadcast(
     if (testMode) {
       const preview = `[ทดสอบวิชาการ] โหมด "${AUDIENCE_LABEL[mode]}" จะส่งถึง ${targets.length} คน\nตัวอย่างข้อความที่ผู้รับจะเห็น:\n\n${sample}`;
       for (const a of adminIds) await pushTo(a, [{ type: "text", text: preview }]);
-    } else {
-      for (const t of targets) await pushTo(t.lineUserId, [{ type: "text", text: t.msg }]);
+      return { ok: true, count: targets.length, testMode, sample };
     }
+    const { createOutbox } = await import("@/lib/bc/outbox");
+    const per: Record<string, { type: "text"; text: string }[]> = {};
+    for (const t of targets) per[t.sid] = [{ type: "text", text: t.msg.slice(0, 4900) }];
+    const item = await createOutbox({
+      kind: "academic", title: `วิชาการ: ${AUDIENCE_LABEL[mode]}${exam ? ` · ${exam.name}` : ""} (${targets.length} คน)`,
+      audience: `ids:${Object.keys(per).join(",")}`, messages: [], perRecipient: per,
+      preview: `${targets.every((t) => t.msg === sample) ? "" : "ข้อความเฉพาะคน — ตัวอย่าง:\n\n"}${sample}`,
+    });
+    return { ok: true, count: targets.length, testMode, sample, code: item.code };
   } catch (err) {
     return { ok: false, count: 0, testMode, error: String(err) };
   }
-  return { ok: true, count: targets.length, testMode, sample };
 }
 
 // ── cron: ส่งเตือนกรอกเอกสารที่ตั้งเวลาไว้และถึงกำหนดแล้ว ─────────────────────

@@ -15,7 +15,15 @@ export type ConfigKey =
   | "portal_notice" // ข้อความประกาศด่วนบนหัวแอป
   | "semester_label"
   | "president_student_id"
-  | "rich_menu_v2_id";
+  | "rich_menu_v2_id"
+  | "rich_menu_v3_id"
+  | "ai_budget_usd" // งบ AI ต่อเดือน (ดอลลาร์) — ค่าเริ่มต้น 10
+  | "ai_price_json" // {"in":0.5,"cached":0.05,"out":3} ดอลลาร์ต่อ 1M token
+  | "ai_user_daily_cap" // คำถามต่อคนต่อวัน (ค่าเริ่มต้น 30)
+  | "linktree_url"
+  | "payment_account_name" // ชื่อบัญชีผู้รับเงินรุ่น (ใช้ตรวจสลิป)
+  | "payment_account_no" // เลขบัญชี/พร้อมเพย์ (4 ตัวท้ายพอ)
+  | "slip_auto_approve"; // "1" = สลิปที่ AI ตรวจแล้วผ่านทุกข้อ ลงว่าจ่ายแล้วทันที (ฝ่ายการเงินย้อนได้)
 
 export async function getConfig(): Promise<Record<string, string>> {
   const rows = await readKey("config");

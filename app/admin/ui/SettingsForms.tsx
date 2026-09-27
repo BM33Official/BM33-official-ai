@@ -49,6 +49,26 @@ export function RolePassword({ role, label, enabled }: { role: "academic" | "fin
   );
 }
 
+export function AccessLinks() {
+  const [links, setLinks] = useState<{ finance?: string | null; academic?: string | null } | null>(null);
+  const [copied, setCopied] = useState("");
+  useEffect(() => { act("access.links").then((r) => r.ok && setLinks(r as never)); }, []);
+  const rows = [{ k: "finance" as const, th: "ฝ่ายการเงิน", note: "เปิดแล้วเห็นเฉพาะหน้าเงินรุ่น" }, { k: "academic" as const, th: "ฝ่ายวิชาการ", note: "เปิดแล้วเห็นเฉพาะหน้าวิชาการ & Red Zone" }];
+  return (
+    <div className="list">
+      {rows.map((r) => {
+        const url = links?.[r.k];
+        return (
+          <div key={r.k} className="li">
+            <div className="li-b"><b>{r.th}</b><small>{url ? r.note : links ? "ตั้งรหัสผ่านของฝ่ายนี้ก่อน" : "…"}</small>{url && <small style={{ fontFamily: "monospace", wordBreak: "break-all" }}>{url}</small>}</div>
+            {url && <button className="btn-sm btn-primary" onClick={() => { navigator.clipboard.writeText(url); setCopied(r.k); setTimeout(() => setCopied(""), 2000); }}>{copied === r.k ? "คัดลอกแล้ว ✓" : "คัดลอกลิงก์"}</button>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 type C = { student_id: string; nickname: string; role: string; contact_url: string };
 export function CommitteeEditor({ rows: init, roster }: { rows: C[]; roster: { sid: string; label: string; nickname: string }[] }) {
   const [rows, setRows] = useState<C[]>(init);
@@ -103,11 +123,11 @@ export function RichMenuPanel() {
   return (
     <div className="card">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <b>เมนู 6 ปุ่มใน LINE (rich menu)</b>
+        <b>เมนู LINE v3 (6 ปุ่มสีต่างกัน + แถบถาม AI)</b>
         <span className={`badge ${st?.isDefault ? "b-ok" : st?.ours ? "b-warn" : "b-muted"}`}>{st ? (st.isDefault ? "ทุกคนใช้เมนูใหม่แล้ว" : st.ours ? "สร้างแล้ว · ยังไม่เปิดให้ทุกคน" : "ยังไม่สร้าง") : "…"}</span>
       </div>
-      <img src="/rich-menu-v2.jpg" alt="rich menu" style={{ width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 10, border: "1px solid var(--line)" }} />
-      <p className="hint">ปุ่ม: หน้าหลัก · ประกาศ & งาน · ตารางเรียน · ของฉัน · เซียมซี (เปิดแอปตรงแท็บนั้น) · ถามบอท (คำถามยอดฮิต + ติดต่อกรรมการ)</p>
+      <img src="/rich-menu-v3.jpg" alt="rich menu" style={{ width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 10, border: "1px solid var(--line)" }} />
+      <p className="hint">ประกาศ · สิ่งที่ต้องกรอก · ตารางเรียน · ของฉัน (เงินรุ่น) · เซียมซี · LinkTree วิชาการ · แถบล่าง “ถาม AI” — ลองกับบัญชีตัวเองก่อน แล้วค่อยเปิดให้ทุกคน</p>
       <div className="row">
         {!st?.ours && <button className="btn-primary btn-sm" disabled={busy} onClick={() => run("richmenu.create")}>สร้างเมนู</button>}
         {st?.ours && <button className="btn-sm" disabled={busy} onClick={() => run("richmenu.linkMe")}>ลองใช้เฉพาะบัญชีฉัน</button>}

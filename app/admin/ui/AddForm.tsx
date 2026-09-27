@@ -43,7 +43,7 @@ export default function AddForm() {
 
   const common = (
     <div className="grid g2">
-      <div className="field"><label>ชื่อฟอร์ม/งาน (เห็นในแอป)</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น ฟอร์มเลือกวิชาเลือก" /></div>
+      <div className="field"><label>ชื่อ (เห็นในแอป)</label><input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="เช่น ฟอร์มเลือกวิชาเลือก" /></div>
       <div className="field"><label>ลิงก์ให้สมาชิกกด (Google Form ฯลฯ)</label><input value={form.link} onChange={(e) => setForm({ ...form, link: e.target.value })} placeholder="https://forms.gle/…" /></div>
       <div className="field"><label>เดดไลน์ (เวลาไทย)</label><input type="datetime-local" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} /></div>
       <div className="field"><label>คำอธิบายสั้น</label><input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="เช่น กรอกทุกคน ใช้เวลา 2 นาที" /></div>
@@ -52,7 +52,7 @@ export default function AddForm() {
 
   return (
     <div className="card">
-      <h2 style={{ marginTop: 0 }}>เพิ่มฟอร์ม/งานใหม่</h2>
+      <h3 style={{ marginTop: 0 }}>เพิ่มสิ่งที่ต้องกรอก</h3>
       <div className="chips" style={{ marginBottom: 14 }}>
         <label className={`chip ${auto ? "on" : ""}`}><input type="radio" checked={auto} onChange={() => setAuto(true)} />มีชีตคำตอบ — ตรวจให้อัตโนมัติ</label>
         <label className={`chip ${!auto ? "on" : ""}`}><input type="radio" checked={!auto} onChange={() => setAuto(false)} />ไม่มีชีต — สมาชิกกด “ทำแล้ว” เอง</label>

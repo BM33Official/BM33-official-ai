@@ -1,47 +1,83 @@
+// เงินรุ่น — ฝ่ายการเงินใช้หน้าเดียว: สลิปรอตรวจ (AI ตรวจให้) → ภาพรวมรายเดือน → เตือนคนที่ยังไม่จ่าย
+import { Wallet, Receipt, CalendarRange, Landmark, FileSpreadsheet, Table2, History } from "lucide-react";
 import { requireRole } from "@/lib/bc/auth";
 import { readRoster } from "@/lib/bc/roster";
-import { readFeeMonths, financeMatrix } from "@/lib/bc/fees";
+import { readFeeMonths, financeMatrix, monthLabel } from "@/lib/bc/fees";
+import { readSlips } from "@/lib/bc/slips";
 import { getConfig } from "@/lib/bc/config";
-import PageHead from "../ui/PageHead";
+import { thDateTime } from "@/lib/time";
+import { Head, Sq } from "../ui/kit";
 import FeeMonths from "../ui/FeeMonths";
 import PayGrid from "../ui/PayGrid";
 import FinanceSettings from "../ui/FinanceSettings";
 import FinanceImport from "../ui/FinanceImport";
+import FinanceBoard from "../ui/FinanceBoard";
+import SlipQueue from "../ui/SlipQueue";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export default async function FinancePage() {
   await requireRole("finance");
-  const [roster, months, matrix, cfg] = await Promise.all([readRoster(), readFeeMonths(true), financeMatrix(), getConfig()]);
+  const [roster, months, matrix, cfg, slips] = await Promise.all([readRoster(), readFeeMonths(true), financeMatrix(), getConfig(), readSlips().catch(() => [])]);
+  const nick = new Map(roster.map((r) => [r.student_id, r.nickname || r.full_name]));
   const rows = roster.map((r) => ({
     sid: r.student_id, nickname: r.nickname || r.full_name, name: r.full_name,
     cells: Object.fromEntries(months.map((m) => [m.month, matrix.cell(r.student_id, m.month)])),
   }));
-  const monthsLite = months.map((m) => ({ month: m.month, label: m.label, amount: m.amount, due_date: m.due_date, note: m.note }));
+  const monthsLite = months.map((m) => ({ month: m.month, label: m.label || monthLabel(m.month), amount: m.amount, due_date: m.due_date, note: m.note }));
   const thisMonth = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 7);
-  const cur = months.find((m) => m.month === thisMonth);
-  const owe = cur ? rows.filter((r) => ["unpaid", "overdue"].includes(r.cells[cur.month])).length : 0;
-  const collected = months.reduce((a, m) => a + rows.filter((r) => ["paid", "yearly"].includes(r.cells[m.month])).length * (Number(m.amount) || 0), 0);
+  const initial = months.find((m) => m.month === thisMonth)?.month ?? months.filter((m) => m.month <= thisMonth).at(-1)?.month ?? months[0]?.month ?? "";
+  const pending = slips.filter((s) => s.status === "pending").reverse().map((s) => ({
+    id: s.id, sid: s.student_id, name: nick.get(s.student_id) ?? s.student_id, month: s.month, monthLabel: s.month ? monthLabel(s.month) : "",
+    amount: s.amount, paid_at: s.paid_at ? thDateTime(s.paid_at) : "", receiver: s.receiver, verdict: s.ai_verdict, note: s.ai_note, image: s.image, when: thDateTime(s.created_at), source: s.source,
+  }));
+  const decided = slips.filter((s) => s.status !== "pending").slice(-15).reverse();
 
   return (
     <div className="wrap">
-      <PageHead icon="💰" title="การเงิน — เงินรุ่น" desc="ฝ่ายการเงินใช้หน้านี้หน้าเดียว: ตั้งยอดแต่ละเดือน แล้วติ๊กว่าใครจ่ายแล้ว — สมาชิกแต่ละคนเห็นสถานะของตัวเองในแอปทันที (ไม่เห็นของคนอื่น)"
-        steps={["เพิ่มเดือน + ยอด + วันครบกำหนด", "ติ๊กคนที่จ่ายแล้ว → บันทึก", "ใส่วิธีจ่ายเงินให้ขึ้นในแอป"]} />
-      <div className="grid g4" style={{ marginBottom: 18 }}>
-        <div className="card"><div className="label">เดือนนี้ค้าง</div><div className="stat">{cur ? owe : "—"}<small> คน</small></div><div className="hint">{cur ? `${cur.label || cur.month} · ${cur.amount} บาท` : "ยังไม่ได้ตั้งเดือนนี้"}</div></div>
-        <div className="card"><div className="label">รับแล้ว (โดยประมาณ)</div><div className="stat">{collected.toLocaleString()}<small> บาท</small></div><div className="hint">รวมทุกเดือน (ไม่รวมยกเว้น)</div></div>
-        <div className="card"><div className="label">จำนวนเดือน</div><div className="stat">{months.length}</div></div>
-        <div className="card"><div className="label">สมาชิกทั้งหมด</div><div className="stat">{roster.length}</div></div>
-      </div>
-      <h2 style={{ marginTop: 0 }}>1 · ยอดเงินรุ่นแต่ละเดือน</h2>
-      <FeeMonths months={monthsLite} />
-      <h2>2 · ใครจ่ายแล้วบ้าง</h2>
-      {months.length ? <PayGrid months={monthsLite} rows={rows} /> : <div className="card"><p className="hint" style={{ margin: 0 }}>เพิ่มเดือนในข้อ 1 ก่อน</p></div>}
-      <h2>3 · วิธีจ่ายเงิน</h2>
-      <FinanceSettings info={cfg.payment_info ?? ""} link={cfg.payment_link ?? ""} sheet={cfg.finance_sheet_link ?? ""} />
-      <div style={{ height: 14 }} />
-      <FinanceImport months={monthsLite} serviceEmail={process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? ""} />
+      <Head icon={Wallet} tone="teal" title="เงินรุ่น" sub="เพื่อนส่งรูปสลิปในแอปหรือในแชตบอท → AI อ่านยอด ผู้รับ และเช็กสลิปซ้ำให้ → คุณแค่กดยืนยัน" />
+
+      {pending.length > 0 && (
+        <>
+          <h2 className="row" style={{ gap: 10 }}><Sq icon={Receipt} tone="orange" /> สลิปรอตรวจ <span className="badge b-orange">{pending.length}</span></h2>
+          <SlipQueue slips={pending} months={monthsLite} />
+        </>
+      )}
+
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={CalendarRange} tone="teal" /> ใครจ่ายแล้วบ้าง</h2>
+      <FinanceBoard months={monthsLite} initial={initial} rows={rows.map((r) => ({ sid: r.sid, nickname: r.nickname, cells: r.cells }))} />
+
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={Landmark} tone="green" /> บัญชีรับเงิน & การตรวจสลิป</h2>
+      <FinanceSettings cfg={cfg} />
+
+      <details className="more" style={{ marginTop: 22 }}>
+        <summary><CalendarRange size={16} /> ตั้งยอดแต่ละเดือน</summary>
+        <div style={{ marginTop: 10 }}><FeeMonths months={monthsLite} /></div>
+      </details>
+      {months.length > 0 && (
+        <details className="more">
+          <summary><Table2 size={16} /> ตารางทุกเดือน (แก้หลายเดือนพร้อมกัน / จ่ายรายปี)</summary>
+          <div style={{ marginTop: 10 }}><PayGrid months={monthsLite} rows={rows} /></div>
+        </details>
+      )}
+      <details className="more">
+        <summary><FileSpreadsheet size={16} /> นำเข้าจากชีตเดิมของฝ่ายการเงิน</summary>
+        <div style={{ marginTop: 10 }}><FinanceImport months={monthsLite} serviceEmail={process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? ""} /></div>
+      </details>
+      {decided.length > 0 && (
+        <details className="more">
+          <summary><History size={16} /> สลิปที่ตรวจแล้ว</summary>
+          <div className="list" style={{ marginTop: 10 }}>
+            {decided.map((s) => (
+              <div key={s.id} className="li">
+                <span className={`badge ${s.status === "approved" ? "b-green" : "b-red"}`}>{s.status === "approved" ? "ผ่าน" : "ไม่ผ่าน"}</span>
+                <div className="li-b"><b>{nick.get(s.student_id) ?? s.student_id} · {Number(s.amount).toLocaleString()} บาท · {s.month ? monthLabel(s.month) : "-"}</b><small>{s.decided_by === "ai-auto" ? "AI ยืนยันอัตโนมัติ" : `โดย ${s.decided_by}`} · {thDateTime(s.decided_at)} · {s.ai_note}</small></div>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }

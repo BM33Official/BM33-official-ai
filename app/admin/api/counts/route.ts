@@ -9,7 +9,12 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const role = await currentRole();
   if (!role) return NextResponse.json({ ok: false }, { status: 401 });
-  if (role !== "admin") return NextResponse.json({ ok: true, role });
+  if (role === "academic") return NextResponse.json({ ok: true, role });
+  if (role === "finance") {
+    const { readSlips } = await import("@/lib/bc/slips");
+    const slips = (await readSlips().catch(() => [])).filter((x) => x.status === "pending").length;
+    return NextResponse.json({ ok: true, role, slips });
+  }
   try {
     const s = await snapshot();
     const str = (v: unknown) => String(v ?? "");
@@ -20,9 +25,12 @@ export async function GET() {
     const inProgress = s.members.filter((m) => str(m.onboarding_state) && !["done", "mismatch"].includes(str(m.onboarding_state))).length;
     const pendingBc = s.broadcasts.filter((b) => ["pending"].includes(str(b.status))).length;
     const drafts = s.announcements.filter((a) => str(a.status) === "draft").length;
+    const { readSlips } = await import("@/lib/bc/slips");
+    const slips = (await readSlips().catch(() => [])).filter((x) => x.status === "pending").length;
     return NextResponse.json({
       ok: true,
       role,
+      slips,
       inbox: pendingOutbox + claims + mismatch,
       members: inProgress,
       broadcasts: pendingBc,

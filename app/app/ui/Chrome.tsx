@@ -2,13 +2,12 @@
 // ชิ้นส่วนโครงแอป: Sheet (ปัดลงเพื่อปิด), TabBar (แคปซูลแก้วเลื่อนตามแท็บ), Segmented, Toast
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { IHome, IBell, ICalendar, IUser, IWheel, IClose } from "./icons";
+import { IHome, ICalendar, IUser, IWheel, IClose } from "./icons";
 import { haptic } from "./useApp";
 
-export type TabKey = "home" | "news" | "schedule" | "me" | "fortune";
+export type TabKey = "home" | "schedule" | "me" | "fortune";
 export const TABS: { key: TabKey; label: string; Icon: typeof IHome }[] = [
   { key: "home", label: "หน้าหลัก", Icon: IHome },
-  { key: "news", label: "ประกาศ", Icon: IBell },
   { key: "schedule", label: "ตาราง", Icon: ICalendar },
   { key: "fortune", label: "เซียมซี", Icon: IWheel },
   { key: "me", label: "ของฉัน", Icon: IUser },
@@ -18,7 +17,7 @@ export function TabBar({ tab, onTab, badges }: { tab: TabKey; onTab: (t: TabKey)
   const idx = TABS.findIndex((t) => t.key === tab);
   return (
     <nav className="tabbar glass" role="tablist">
-      <div className="blob" style={{ left: `calc(7px + (100% - 14px) / 5 * ${idx})`, width: "calc((100% - 14px) / 5)" }} />
+      <div className="blob" style={{ left: `calc(7px + (100% - 14px) / ${TABS.length} * ${idx})`, width: `calc((100% - 14px) / ${TABS.length})` }} />
       {TABS.map(({ key, label, Icon }) => (
         <button
           key={key}

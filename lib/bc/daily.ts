@@ -141,7 +141,7 @@ export async function generateDaily(opts: { force?: boolean } = {}): Promise<{ i
         required: ["headline", "items"],
       },
       DailyZ as unknown as z.ZodType<z.infer<typeof DailyZ>>,
-      { timeoutMs: 40_000, temperature: 0.7, thinking: "LOW", maxOutputTokens: 4096 }
+      { timeoutMs: 40_000, temperature: 0.7, thinking: "LOW", maxOutputTokens: 3000, feature: "daily" }
     );
     if (data) {
       headline = data.headline.slice(0, 120);

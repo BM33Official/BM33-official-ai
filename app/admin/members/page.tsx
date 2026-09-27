@@ -1,8 +1,9 @@
 import { requireAdmin } from "@/lib/bc/auth";
 import { readMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
+import { Users } from "lucide-react";
 import MembersTable, { MemberRow } from "../ui/MembersTable";
-import PageHead from "../ui/PageHead";
+import { Head, Ring } from "../ui/kit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,7 +67,24 @@ export default async function Members() {
 
   return (
     <div className="wrap">
-      <PageHead icon="👥" title="สมาชิก" desc={`ทุกคนในทะเบียนรุ่น ${roster.length} คน — ใครยืนยันตัวตนแล้ว (ทางบอทหรือแอป) ใครเปิดแอปแล้ว และใครยังไม่ได้เข้าร่วม`} />
+      <Head icon={Users} tone="blue" title="สมาชิก" sub={`ทะเบียนรุ่น ${roster.length} คน — แต่ละช่องคือเพื่อน 1 คน`} />
+      <div className="card" style={{ marginBottom: 18 }}>
+        <div className="row" style={{ gap: 24, alignItems: "center", marginBottom: 16 }}>
+          <Ring value={verified} max={roster.length || 1} size={110} stroke={12} tone="blue" label={verified} sub={`จาก ${roster.length}`} />
+          <div className="row" style={{ gap: 28 }}>
+            <div><div className="bignum" style={{ color: "#0058b8" }}>{rows.filter((r) => r.app).length}</div><div className="hint">เปิดแอปแล้ว</div></div>
+            <div><div className="bignum" style={{ color: "var(--orange-ink)" }}>{onboarding}</div><div className="hint">กำลังยืนยัน</div></div>
+            <div><div className="bignum muted">{missing}</div><div className="hint">ยังไม่เข้าร่วม</div></div>
+          </div>
+        </div>
+        <div className="dots">
+          {rows.filter((r) => r.student_id).sort((a, b) => a.student_id.localeCompare(b.student_id)).map((r) => (
+            <span key={r.student_id} className={`d ${r.state === "verified" ? (r.app ? "blue" : "soft") : r.state === "missing" ? "none" : "warn"}`}
+              title={`${r.nickname || r.full_name} · ${r.state === "verified" ? (r.app ? "ยืนยันแล้ว + เปิดแอป" : "ยืนยันแล้ว") : r.state === "missing" ? "ยังไม่เข้าร่วม" : "กำลังยืนยัน"}`}>{Number(r.student_id.slice(-3))}</span>
+          ))}
+        </div>
+        <div className="legend" style={{ marginTop: 12 }}><span><i style={{ background: "#007aff" }} />เปิดแอปแล้ว</span><span><i style={{ background: "#d7f5df" }} />ยืนยันแล้ว</span><span><i style={{ background: "#ff9500" }} />กำลังยืนยัน</span><span><i style={{ background: "#e5e5ea" }} />ยังไม่เข้าร่วม</span></div>
+      </div>
       <MembersTable rows={rows} total={roster.length} verified={verified} onboarding={onboarding} missing={missing} />
     </div>
   );

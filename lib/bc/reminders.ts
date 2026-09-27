@@ -27,7 +27,7 @@ export async function queueAnnouncementReminder(a: Announcement, stage: string, 
     a.form_id ? "ใครทำแล้วข้ามได้เลยน้า 🙏" : "",
     "ดูรายละเอียดทั้งหมดในแอป BM33 👇",
   ].filter(Boolean).join("\n\n");
-  const btnLinks = [...links.slice(0, 3), { label: "เปิดในแอป BM33", url: `${APP}?tab=news&a=${encodeURIComponent(a.id)}` }];
+  const btnLinks = [...links.slice(0, 3), { label: "เปิดในแอป BM33", url: `${APP}?a=${encodeURIComponent(a.id)}` }];
   return createOutbox({
     kind: "deadline",
     ref_id: `ann:${a.id}:${stage}`,
@@ -40,24 +40,24 @@ export async function queueAnnouncementReminder(a: Announcement, stage: string, 
   });
 }
 
-async function queueFormReminder(f: FormDef, stage: string): Promise<OutboxItem | null> {
-  if (!f.deadline_at) return null;
-  const days = Math.max(0, dayDiff(f.deadline_at));
+export async function queueFormReminder(f: FormDef, stage: string): Promise<OutboxItem | null> {
+  if (!f.deadline_at && !stage.startsWith("manual")) return null;
+  const days = f.deadline_at ? Math.max(0, dayDiff(f.deadline_at)) : -1;
   const text = [
-    `⏰ ${stageLabel(days)}!\n${f.name}`,
+    f.deadline_at ? `⏰ ${stageLabel(days)}!\n${f.name}` : `📝 อย่าลืมกรอก\n${f.name}`,
     f.description ?? "",
-    `📅 ปิด ${thDateTime(f.deadline_at)} (${relativeTh(f.deadline_at)})`,
+    f.deadline_at ? `📅 ปิด ${thDateTime(f.deadline_at)} (${relativeTh(f.deadline_at)})` : "",
     "ข้อความนี้ส่งเฉพาะคนที่ระบบยังไม่เห็นว่าทำ ถ้าทำแล้วกด “ฉันทำแล้ว” ในแอปได้เลย 🙏",
   ].filter(Boolean).join("\n\n");
-  const links = [...(f.link ? [{ label: "เปิดฟอร์ม", url: f.link }] : []), { label: "เปิดในแอป BM33", url: `${APP}?tab=news` }];
+  const links = [...(f.link ? [{ label: "เปิดฟอร์ม", url: f.link }] : []), { label: "เปิดในแอป BM33", url: `${APP}?tab=todo` }];
   return createOutbox({
     kind: "deadline",
     ref_id: `form:${f.form_id}:${stage}`,
-    title: `${stageLabel(days)}: ${f.name}`,
+    title: f.deadline_at ? `${stageLabel(days)}: ${f.name}` : `เตือน: ${f.name}`,
     audience: `undone:${f.form_id}`,
-    messages: reminderMessages({ text, title: f.name, links, color: days <= 1 ? "#E11D48" : "#1D4ED8" }),
+    messages: reminderMessages({ text, title: f.name, links, color: days >= 0 && days <= 1 ? "#E11D48" : "#1D4ED8" }),
     preview: text,
-    expires_at: f.deadline_at,
+    expires_at: f.deadline_at || undefined,
   });
 }
 
