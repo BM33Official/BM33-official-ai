@@ -4,11 +4,15 @@ import { deleteRow } from "@/lib/google-sheets";
 import { TABS, Exam } from "@/lib/bc/types";
 import { verifiedMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
-import { redZoneSize, getConfig } from "@/lib/bc/config";
+import { getConfig } from "@/lib/bc/config";
 import { pushTo } from "@/lib/line";
+import type { messagingApi } from "@line/bot-sdk";
+type Msg = messagingApi.Message;
+type FlexBubble = messagingApi.FlexBubble;
+type FlexButton = messagingApi.FlexButton;
+type FlexText = messagingApi.FlexText;
 import { bust } from "@/lib/cache";
 
-export const RED_ZONE_SIZE = 6; // ค่าเริ่มต้น — ค่าจริงอ่านจาก BC_config (red_zone_size)
 const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 const idList = (s: string) => String(s ?? "").split(",").map((x) => digits(x)).filter(Boolean);
 
@@ -47,20 +51,43 @@ export async function deleteExam(examId: string): Promise<boolean> {
   bust("bc");
   return true;
 }
-// บันทึกชุด student_id ที่ "ยังไม่ได้จำ" ของข้อสอบนี้
+// บันทึกชุด student_id ที่ "ยังไม่ได้กรอก/จำ" ของข้อสอบนี้ — รายชื่อเดียวใช้ทั้ง Red Zone และการตามเตือน
+// (not_filled_ids เขียนค่าเดียวกันไว้ให้ของเก่า · คนที่ "ยอมโดน" แต่ถูกเอาออกจากรายชื่อ -> ล้างสถานะยอมโดนด้วย)
 export async function setNotMemorized(examId: string, studentIds: string[]): Promise<void> {
   const e = await getExam(examId, true);
   if (!e?.__row) return;
   const clean = Array.from(new Set(studentIds.map(digits).filter(Boolean)));
-  await patchRecord("exams", e.__row, e as never, { not_memorized_ids: clean.join(",") });
+  const accepted = idList(e.accepted_ids ?? "").filter((x) => clean.includes(x));
+  await patchRecord("exams", e.__row, e as never, { not_memorized_ids: clean.join(","), not_filled_ids: clean.join(","), accepted_ids: accepted.join(",") });
 }
-// บันทึกชุด student_id ที่ "ยังไม่กรอกเอกสาร" ของข้อสอบนี้ (ติ๊กเองหลังตรวจเอกสาร)
-export async function setNotFilled(examId: string, studentIds: string[]): Promise<void> {
+export const setNotFilled = setNotMemorized; // รวมเป็นรายชื่อเดียวแล้ว
+
+// เพื่อนกด "จำไม่ได้ ยอมโดน" ในแอป (on=false = ยกเลิก) — เฉพาะข้อสอบที่ตัวเองยังไม่ได้กรอก
+export async function setAccepted(examId: string, studentId: string, on: boolean): Promise<boolean> {
   const e = await getExam(examId, true);
-  if (!e?.__row) return;
-  const clean = Array.from(new Set(studentIds.map(digits).filter(Boolean)));
-  await patchRecord("exams", e.__row, e as never, { not_filled_ids: clean.join(",") });
+  const sid = digits(studentId);
+  if (!e?.__row || !idList(e.not_memorized_ids).includes(sid)) return false;
+  const set = new Set(idList(e.accepted_ids ?? ""));
+  if (on) set.add(sid); else set.delete(sid);
+  await patchRecord("exams", e.__row, e as never, { accepted_ids: Array.from(set).join(",") });
+  return true;
 }
+
+// ข้อสอบที่ "ยังไม่ได้กรอก" ของแต่ละคน (ใหม่ -> เก่า)
+export interface PendingExam { exam_id: string; name: string; link: string; title: string; date: string; accepted: boolean }
+export async function pendingExams(): Promise<Map<string, PendingExam[]>> {
+  const out = new Map<string, PendingExam[]>();
+  for (const e of examOrder(await readExams())) {
+    const acc = new Set(idList(e.accepted_ids ?? ""));
+    for (const sid of idList(e.not_memorized_ids)) {
+      const list = out.get(sid) ?? [];
+      list.push({ exam_id: e.exam_id, name: e.name, link: e.doc_link ?? "", title: e.doc_title ?? "", date: e.exam_date ?? "", accepted: acc.has(sid) });
+      out.set(sid, list);
+    }
+  }
+  return out;
+}
+
 // ตั้งเวลาส่งเตือนกรอกเอกสารอัตโนมัติ (atISO ว่าง = ยกเลิก); template = ข้อความที่แก้ไว้
 export async function scheduleDocReminder(examId: string, atISO: string, template = ""): Promise<boolean> {
   const e = await getExam(examId, true);
@@ -97,8 +124,6 @@ function examOrder(exams: Exam[]): Exam[] {
   return [...exams].sort((a, b) => t(b) - t(a)); // ใหม่ -> เก่า
 }
 
-// จัดอันดับจากทะเบียนทั้งรุ่น (ไม่ใช่แค่คนที่ลงทะเบียน) เพื่อให้ red zone ถูกต้อง
-// red zone = N อันดับแรกของคะแนนสะสม (N จาก BC_config.red_zone_size)
 // เงินรุ่นที่ "เลยกำหนดแล้วยังไม่จ่าย" ของทุกคน (student id -> ป้ายเดือน) — ใช้ร่วมกับ red zone
 export async function overdueFees(now = Date.now()): Promise<Map<string, string[]>> {
   const { readFeeMonths, readPayments, stateFor, monthLabel } = await import("@/lib/bc/fees");
@@ -120,8 +145,28 @@ export async function redZoneFeeRule(): Promise<{ on: boolean; weight: number }>
   return { on: (cfg.red_zone_fees ?? "").trim() !== "0", weight: Number.isFinite(w) && w > 0 ? w : 1 };
 }
 
+// เดือนที่ค้างยกมาจากระบบเดิม (ฝ่ายการเงินกรอกเอง) — {"<student_id>": n}
+export async function feeCarry(): Promise<Map<string, number>> {
+  const cfg = await getConfig();
+  const out = new Map<string, number>();
+  try {
+    for (const [k, v] of Object.entries(JSON.parse(cfg.fee_carry_json || "{}") as Record<string, unknown>)) {
+      const n = Math.max(0, Math.min(24, Math.round(Number(v) || 0)));
+      if (n > 0 && digits(k)) out.set(digits(k), n);
+    }
+  } catch { /* ค่าเสีย = ไม่มียอดยกมา */ }
+  return out;
+}
+
+// ระดับ Red Zone ตาม "จำนวนที่ค้าง" (ข้อสอบที่ยังไม่ได้กรอก + เดือนเงินรุ่นที่เลยกำหนด/ยกมา)
+//   3 ขึ้นไป = Red Zone · 2 = ใกล้ · 1 = เฝ้าระวัง · 0 = ปลอดภัย   (ลำดับยังเรียงตามคะแนนสะสม)
+export const ZONE_RED = 3;
+export function levelFor(strikes: number): ZoneLevel {
+  return strikes >= ZONE_RED ? "red" : strikes === 2 ? "close" : strikes === 1 ? "watch" : "safe";
+}
+
 export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number; fees: { on: boolean; weight: number } }> {
-  const [roster, members, exams, size, fees, rule] = await Promise.all([readRoster(), verifiedMembers(), readExams(), redZoneSize(), overdueFees().catch(() => new Map<string, string[]>()), redZoneFeeRule()]);
+  const [roster, members, exams, fees, carry, rule] = await Promise.all([readRoster(), verifiedMembers(), readExams(), overdueFees().catch(() => new Map<string, string[]>()), feeCarry(), redZoneFeeRule()]);
   const lineById = new Map(members.map((m) => [digits(m.matched_student_id), m.line_user_id]));
   const ordered = examOrder(exams);
   const weight = new Map(ordered.map((e, i) => [e.exam_id, Math.max(0.35, RECENCY_DECAY ** i)]));
@@ -129,170 +174,185 @@ export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; 
   const base = roster.map((r) => {
     const sid = digits(r.student_id);
     const missed = ordered.filter((e) => idList(e.not_memorized_ids).includes(sid));
-    // red zone = ไม่ได้จำข้อสอบ + เงินรุ่นเลยกำหนด (ฝ่ายการเงินปิดได้ / ปรับน้ำหนักได้)
-    const feeMonths = rule.on ? fees.get(sid) ?? [] : [];
-    const score = Math.round((missed.reduce((a, e) => a + (weight.get(e.exam_id) ?? 1), 0) + feeMonths.length * rule.weight) * 100) / 100;
+    // red zone = ข้อสอบที่ยังไม่ได้กรอก + เงินรุ่นเลยกำหนด/ค้างยกมา (ฝ่ายการเงินปิดได้ / ปรับน้ำหนักได้)
+    const c = rule.on ? carry.get(sid) ?? 0 : 0;
+    const feeMonths = rule.on ? [...(c ? [`ค้างยกมา ${c} เดือน`] : []), ...(fees.get(sid) ?? [])] : [];
+    const feeN = rule.on ? c + (fees.get(sid)?.length ?? 0) : 0;
+    const score = Math.round((missed.reduce((a, e) => a + (weight.get(e.exam_id) ?? 1), 0) + feeN * rule.weight) * 100) / 100;
     return {
       student_id: sid, nickname: r.nickname || r.full_name || sid, lineUserId: lineById.get(sid) || "",
-      misses: missed.length, missedExams: missed.map((e) => e.name), feeMisses: feeMonths.length, feeMonths, score,
+      misses: missed.length, missedExams: missed.map((e) => e.name), feeMisses: feeN, feeMonths, score,
     };
   });
 
-  const sorted = [...base].sort((a, b) => b.score - a.score || (b.misses + b.feeMisses) - (a.misses + a.feeMisses));
-  const withMiss = sorted.filter((r) => r.score > 0);
-  const red = withMiss.slice(0, size);
-  // เสมอกันที่เส้นตัด -> รวมเข้า red zone ทั้งหมด (ยุติธรรม ไม่ตัดตามลำดับตัวอักษร)
-  const threshold = red.at(-1)?.score ?? 0;
-  const redSet = new Set(threshold > 0 ? withMiss.filter((r) => r.score >= threshold).map((r) => r.student_id) : []);
   const strikes = (r: { misses: number; feeMisses: number }) => r.misses + r.feeMisses;
-  const redzoneMin = red.length >= size ? strikes(red[red.length - 1]) : (red.at(-1) ? strikes(red.at(-1)!) : 1);
-
-  const rows: RankRow[] = sorted.map((r, i) => {
-    const inRed = redSet.has(r.student_id);
-    let level: ZoneLevel = "safe";
-    if (inRed) level = "red";
-    else if (r.score > 0 && (i < size * 2 || (threshold > 0 && r.score >= threshold * 0.6))) level = "close";
-    else if (r.score > 0) level = "watch";
-    return {
-      ...r,
-      level,
-      redzone: inRed,
-      distanceToRed: inRed ? 0 : Math.max(1, redzoneMin - strikes(r) + 1),
-    };
+  const sorted = [...base].sort((a, b) => b.score - a.score || strikes(b) - strikes(a));
+  const rows: RankRow[] = sorted.map((r) => {
+    const level = levelFor(strikes(r));
+    return { ...r, level, redzone: level === "red", distanceToRed: Math.max(0, ZONE_RED - strikes(r)) };
   });
-  return { rows, redzoneMin, size, threshold, fees: rule };
+  return { rows, redzoneMin: ZONE_RED, size: rows.filter((r) => r.redzone).length, threshold: ZONE_RED, fees: rule };
 }
 
-export type AcademicMode = "unmemorized" | "redzone" | "rest" | "doc" | "doc_unfilled";
+// ── ส่งข้อความถึงเพื่อน — 3 แบบ ชัด ๆ ─────────────────────────────────────────
+//   invite = ก่อนตรวจ: ชวน "ทุกคน" ไปกรอกข้อสอบที่เลือก (ลิงก์เอกสารของข้อสอบนั้น · ตั้งเวลาได้)
+//   chase  = หลังตรวจ: ตามเฉพาะคนที่ "ยังไม่ได้กรอก" — 1 ข้อความรวมทุกข้อสอบที่ค้าง + ปุ่มลิงก์แยกทีละข้อสอบ
+//            (คนที่กด "จำไม่ได้ ยอมโดน" ในแอป = ไม่ตามแล้ว)
+//   zone   = แจ้งระดับ Red Zone ให้คนที่ค้าง 2 อย่างขึ้นไป (ใกล้ + Red Zone) พร้อมรายการที่ค้าง
+export type AcademicMode = "invite" | "chase" | "zone";
+const MODE_ALIAS: Record<string, AcademicMode> = { doc: "invite", doc_unfilled: "chase", unmemorized: "chase", rest: "zone", redzone: "zone" };
+export const normMode = (m: string): AcademicMode => (["invite", "chase", "zone"].includes(m) ? m as AcademicMode : MODE_ALIAS[m] ?? "chase");
 
-const REMARK = "\n\nถ้าคิดว่าข้อมูลไม่ถูกต้อง ทักฝ่ายวิชาการได้เลยนะ 🙏";
+export interface AcademicOpts { template?: string; link?: string; examIds?: string[]; by?: string }
 
-export interface AcademicOpts { template?: string; link?: string }
-
-// ข้อความเริ่มต้นแบบแก้ได้ (มี token) — frontend ใช้ค่าเดียวกันเป็นค่าเริ่มต้นในช่องแก้ไข
+const APP = "https://liff.line.me/2011755768-aSlCqo7l";
 export const DEFAULT_TEMPLATES: Record<AcademicMode, string> = {
-  unmemorized: `{ชื่อเล่น} จ๋า 📝\n\nมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง:\n{ข้อสอบ}\n\nหาเวลาทยอยจำนะ สู้ ๆ 😊`,
-  redzone: `{ชื่อเล่น} จ๋า 📕\n\nตอนนี้เธออยู่ใน red zone แล้วน้า (นับจากข้อสอบที่ยังไม่ได้จำ + เงินรุ่นที่เลยกำหนด · {จำนวนโซน} อันดับท้ายของรุ่น)\n{ข้อสอบ}{เงินรุ่น}\n\nค่อย ๆ ทยอยเคลียร์นะ เดี๋ยวก็หลุดโซนแล้ว สู้ ๆ 💪`,
-  rest: `{ชื่อเล่น} จ๋า 📖\n\nยังมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง ({ข้อสอบ})\nอีกแค่ {ระยะห่าง} ครั้งจะเข้า red zone แล้วน้า\n\nเร่งจำอีกนิดนะ เป็นกำลังใจให้ 🔥`,
-  doc: `ฝากกรอกเอกสารแบ่งข้อรับผิดชอบด้วยน้า 📄\n\n"{ชื่อเอกสาร}"\n\nใครกรอกครบแล้วข้ามได้เลยน้า ขอบคุณมาก ๆ 🙏`,
-  doc_unfilled: `แอบมาสะกิดนิดนึงน้า 📄\n\nเหมือนยังไม่เห็นชื่อในเอกสารแบ่งข้อเลย\n"{ชื่อเอกสาร}"\n\nรบกวนช่วยไปกรอกด้วยน้า จะได้ครบทั้งรุ่น ขอบคุณมาก ๆ 🙏`,
+  invite: `ฝากทุกคนไปกรอกข้อที่ตัวเองรับผิดชอบใน "{ข้อสอบ}" ด้วยน้า 📄\nกรอกครบแล้วข้ามได้เลย ขอบคุณมาก ๆ 🙏`,
+  chase: `{ชื่อเล่น} จ๋า 📝 ยังไม่เห็นข้อที่รับผิดชอบใน {จำนวน} ข้อสอบนี้เลย กดปุ่มไปกรอกทีละอันได้เลยน้า\nถ้าจำไม่ได้จริง ๆ กด “จำไม่ได้ ยอมโดน” ในแอปได้ ระบบจะไม่ตามอีก`,
+  zone: `{ชื่อเล่น} จ๋า 📕 ตอนนี้อยู่ระดับ “{ระดับ}” (ค้าง {ค้าง} อย่าง · ครบ 3 = Red Zone)\nเคลียร์ทีละอย่างได้เลย เดี๋ยวก็หลุดโซน สู้ ๆ 💪`,
 };
+const LEVEL_TH: Record<ZoneLevel, string> = { red: "Red Zone", close: "ใกล้ Red Zone", watch: "เฝ้าระวัง", safe: "ปลอดภัย" };
+const LEVEL_COLOR: Record<ZoneLevel, string> = { red: "#E11D48", close: "#EA580C", watch: "#CA8A04", safe: "#16A34A" };
 
-// แทน token ในเทมเพลตด้วยข้อมูลจริงของผู้รับ
-function fillTokens(tpl: string, r: RankRow, size = RED_ZONE_SIZE): string {
-  return tpl
-    .replace(/\{ชื่อเล่น\}/g, r.nickname)
-    .replace(/\{จำนวน\}/g, String(r.misses))
-    .replace(/\{ข้อสอบ\}/g, r.missedExams.map((n) => `• ${n}`).join("\n"))
-    .replace(/\{เงินรุ่น\}/g, r.feeMonths?.length ? `\n💸 เงินรุ่นที่เลยกำหนด: ${r.feeMonths.join(", ")}` : "")
-    .replace(/\{ระยะห่าง\}/g, String(r.distanceToRed))
-    .replace(/\{จำนวนโซน\}/g, String(size));
-}
-// ต่อลิงก์ท้ายข้อความ (ถ้าฝ่ายวิชาการใส่มา และยังไม่มีในข้อความ)
-function appendLink(msg: string, link?: string): string {
-  const l = (link ?? "").trim();
-  if (!l || msg.includes(l)) return msg;
-  return `${msg}\n\n${l}`;
+// การ์ดกลาง: ใช้ทั้งสร้าง LINE Flex และตัวอย่างในหน้าเว็บ (ให้เห็นเหมือนกันเป๊ะ)
+export interface MsgCard {
+  color: string; head: string; title: string; text: string; lines: string[];
+  bubbles: { title: string; sub: string; buttons: { label: string; url: string }[] }[];
+  app: { label: string; url: string };
 }
 
-function messageFor(mode: AcademicMode, r: RankRow, opts?: AcademicOpts, size = RED_ZONE_SIZE): string | null {
-  if (mode === "redzone" && !r.redzone) return null;
-  if (mode === "rest" && (r.redzone || r.misses === 0)) return null;
-  if (mode === "unmemorized" && r.misses === 0) return null;
-  if (!["redzone", "rest", "unmemorized"].includes(mode)) return null;
-  const tpl = opts?.template?.trim() || DEFAULT_TEMPLATES[mode];
-  return appendLink(fillTokens(tpl, r, size) + (opts?.template ? "" : REMARK), opts?.link);
+function fill(tpl: string, t: Record<string, string>): string {
+  return tpl.replace(/\{(ชื่อเล่น|จำนวน|ข้อสอบ|ระดับ|ค้าง)\}/g, (_, k) => t[k] ?? "");
+}
+const examLabel = (e: { name: string; date?: string }) => e.name + (e.date ? ` (${e.date.slice(8, 10)}/${e.date.slice(5, 7)})` : "");
+
+export function cardToMessages(c: MsgCard): Msg[] {
+  const btn = (b: { label: string; url: string }, i: number, color: string): FlexButton => ({
+    type: "button", height: "sm", style: i === 0 ? "primary" : "secondary", color: i === 0 ? color : undefined,
+    action: { type: "uri", label: b.label.slice(0, 20), uri: b.url },
+  });
+  const main: FlexBubble = {
+    type: "bubble", size: "kilo",
+    header: { type: "box", layout: "vertical", backgroundColor: c.color, paddingAll: "14px", contents: [
+      { type: "text", text: c.head, color: "#FFFFFFCC", size: "xs", weight: "bold" },
+      { type: "text", text: c.title.slice(0, 60), color: "#FFFFFF", size: "lg", weight: "bold", wrap: true, margin: "xs" },
+    ] },
+    body: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "14px", contents: [
+      { type: "text", text: c.text.slice(0, 900), size: "sm", wrap: true, color: "#0F172A" },
+      ...(c.lines.length ? [{ type: "separator", margin: "md" } as const] : []),
+      ...c.lines.slice(0, 10).map((l): FlexText => ({ type: "text", text: l.slice(0, 90), size: "xs", wrap: true, color: "#334155" })),
+    ] },
+    footer: { type: "box", layout: "vertical", paddingAll: "12px", contents: [btn(c.app, 0, c.color)] },
+  };
+  const rest: FlexBubble[] = c.bubbles.slice(0, 9).map((b) => ({
+    type: "bubble", size: "micro",
+    header: { type: "box", layout: "vertical", backgroundColor: c.color, paddingAll: "10px", contents: [{ type: "text", text: "📄 ข้อสอบ", color: "#FFFFFF", size: "xs", weight: "bold" }] },
+    body: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "12px", contents: [
+      { type: "text", text: b.title.slice(0, 80), weight: "bold", size: "sm", wrap: true, maxLines: 3 },
+      ...(b.sub ? [{ type: "text", text: b.sub.slice(0, 60), size: "xxs", color: "#64748B", wrap: true } as FlexText] : []),
+    ] },
+    footer: { type: "box", layout: "vertical", spacing: "xs", paddingAll: "10px", contents: b.buttons.slice(0, 2).map((x, i) => btn(x, i, c.color)) },
+  }));
+  const alt = `${c.title} — ${c.text}`.replace(/\s+/g, " ").slice(0, 380);
+  return [{ type: "flex", altText: alt, contents: rest.length ? { type: "carousel", contents: [main, ...rest] } : main }];
 }
 
-// ── preview: นับผู้รับ + ตัวอย่างข้อความ (ไม่ส่งจริง) ─────────────────────────
-export interface AcademicPreview { count: number; sample: string; audience: string }
+// ── ใครได้อะไร ──────────────────────────────────────────────────────────────
+interface Target { sid: string; lineUserId: string; card: MsgCard }
 
-const AUDIENCE_LABEL: Record<AcademicMode, string> = {
-  unmemorized: "ทุกคนที่ยังมีข้อสอบไม่ได้จำ",
-  redzone: "เฉพาะคนใน Red Zone",
-  rest: "คนที่ยังไม่ได้จำ แต่ยังไม่ถึง Red Zone",
-  doc: "สมาชิกที่ลงทะเบียนแล้วทุกคน (เตือนให้ไปกรอกเอกสาร)",
-  doc_unfilled: "เฉพาะคนที่ถูกติ๊กว่ายังไม่กรอกเอกสาร",
-};
+async function buildTargets(mode: AcademicMode, opts: AcademicOpts = {}): Promise<{ targets: Target[]; unreg: number; label: string; error?: string }> {
+  const tpl = (opts.template ?? "").trim() || DEFAULT_TEMPLATES[mode];
+  const extra = (opts.link ?? "").trim();
+  const extraBtn = /^https?:\/\//.test(extra) ? [{ label: "ลิงก์เพิ่มเติม", url: extra }] : [];
+  const { rows } = await ranking();
+  const exams = await readExams();
 
-// สมาชิกที่ verified + อยู่ในชุด student_id ที่กำหนด
-async function membersInSet(ids: string[]): Promise<{ lineUserId: string }[]> {
-  const set = new Set(ids.map(digits).filter(Boolean));
-  const members = await verifiedMembers();
-  return members.filter((m) => set.has(digits(m.matched_student_id))).map((m) => ({ lineUserId: m.line_user_id }));
-}
-
-export async function academicPreview(mode: AcademicMode, exam?: Exam | null, opts?: AcademicOpts): Promise<AcademicPreview> {
-  if (mode === "doc") {
+  if (mode === "invite") {
+    const e = exams.find((x) => x.exam_id === opts.examIds?.[0]);
+    if (!e) return { targets: [], unreg: 0, label: "", error: "เลือกข้อสอบก่อน" };
     const members = await verifiedMembers();
-    return { count: members.length, sample: docMessage(exam, false, opts), audience: AUDIENCE_LABEL.doc };
+    const card: MsgCard = {
+      color: "#4F46E5", head: "📄 ชวนกรอกข้อสอบ", title: examLabel({ name: e.name, date: e.exam_date }),
+      text: fill(tpl, { ข้อสอบ: e.doc_title || e.name }), lines: [], bubbles: [],
+      app: e.doc_link ? { label: "ไปกรอกเลย", url: e.doc_link } : { label: "ดูในแอป", url: `${APP}?tab=zone` },
+    };
+    if (extraBtn.length) card.bubbles.push({ title: "ลิงก์เพิ่มเติม", sub: "", buttons: extraBtn });
+    return { targets: members.map((m) => ({ sid: digits(m.matched_student_id), lineUserId: m.line_user_id, card })), unreg: 0, label: `ทุกคนที่ลงทะเบียน (${members.length} คน) · ข้อสอบ ${e.name}` };
   }
-  if (mode === "doc_unfilled") {
-    const ids = idList(exam?.not_filled_ids ?? "");
-    const recips = await membersInSet(ids);
-    const notReg = ids.length - recips.length;
-    const audience = AUDIENCE_LABEL.doc_unfilled + (notReg > 0 ? ` (อีก ${notReg} คนยังไม่ลงทะเบียน จึงส่งไม่ได้)` : "");
-    return { count: recips.length, sample: docMessage(exam, true, opts), audience };
+
+  const pend = await pendingExams();
+  const pick = new Set(opts.examIds?.length ? opts.examIds : exams.map((e) => e.exam_id));
+  const targets: Target[] = [];
+  let unreg = 0;
+  for (const r of rows) {
+    const mine = (pend.get(r.student_id) ?? []).filter((p) => !p.accepted && pick.has(p.exam_id));
+    let card: MsgCard | null = null;
+    if (mode === "chase" && mine.length) {
+      card = {
+        color: "#E11D48", head: "📝 ยังไม่ได้กรอก", title: `${mine.length} ข้อสอบ`,
+        text: fill(tpl, { ชื่อเล่น: r.nickname, จำนวน: String(mine.length), ข้อสอบ: mine.map((m) => m.name).join(", "), ระดับ: LEVEL_TH[r.level], ค้าง: String(r.misses + r.feeMisses) }),
+        lines: mine.map((m) => `• ${examLabel(m)}`),
+        bubbles: [...mine.map((m) => ({ title: examLabel(m), sub: m.title, buttons: m.link ? [{ label: "ไปกรอก", url: m.link }, { label: "จำไม่ได้ ยอมโดน", url: `${APP}?tab=zone` }] : [{ label: "ดูในแอป", url: `${APP}?tab=zone` }] })),
+          ...(extraBtn.length ? [{ title: "ลิงก์เพิ่มเติม", sub: "", buttons: extraBtn }] : [])],
+        app: { label: "ดูทั้งหมดในแอป", url: `${APP}?tab=zone` },
+      };
+    }
+    if (mode === "zone" && (r.level === "red" || r.level === "close")) {
+      const all = pend.get(r.student_id) ?? [];
+      card = {
+        color: LEVEL_COLOR[r.level], head: "📕 สถานะ Red Zone", title: LEVEL_TH[r.level],
+        text: fill(tpl, { ชื่อเล่น: r.nickname, จำนวน: String(all.length), ข้อสอบ: all.map((m) => m.name).join(", "), ระดับ: LEVEL_TH[r.level], ค้าง: String(r.misses + r.feeMisses) }),
+        lines: [...all.map((m) => `📝 ${examLabel(m)}${m.accepted ? " (ยอมโดนแล้ว)" : ""}`), ...r.feeMonths.map((f) => `💸 เงินรุ่น ${f}`)],
+        bubbles: [...all.filter((m) => !m.accepted && m.link).map((m) => ({ title: examLabel(m), sub: m.title, buttons: [{ label: "ไปกรอก", url: m.link }] })),
+          ...(r.feeMisses ? [{ title: "เงินรุ่นที่ค้าง", sub: r.feeMonths.join(", "), buttons: [{ label: "จ่าย/ส่งสลิป", url: `${APP}?tab=fees` }] }] : []),
+          ...(extraBtn.length ? [{ title: "ลิงก์เพิ่มเติม", sub: "", buttons: extraBtn }] : [])],
+        app: { label: "ดูในแอป", url: `${APP}?tab=zone` },
+      };
+    }
+    if (!card) continue;
+    if (!r.lineUserId) { unreg++; continue; }
+    targets.push({ sid: r.student_id, lineUserId: r.lineUserId, card });
   }
-  const { rows, size } = await ranking();
-  const targets = rows.map((r) => ({ r, msg: messageFor(mode, r, opts, size) })).filter((x) => x.msg && x.r.lineUserId) as { r: RankRow; msg: string }[];
-  const withoutLine = rows.filter((r) => messageFor(mode, r, opts, size) && !r.lineUserId).length;
-  const audience = AUDIENCE_LABEL[mode] + (withoutLine > 0 ? ` (อีก ${withoutLine} คนยังไม่ลงทะเบียน จึงส่งไม่ได้)` : "");
-  return { count: targets.length, sample: targets[0]?.msg ?? "— ยังไม่มีผู้รับในกลุ่มนี้ —", audience };
+  const label = mode === "chase" ? "เฉพาะคนที่ยังไม่ได้กรอก (ไม่รวมคนที่กดยอมโดน)" : "คนที่อยู่ Red Zone และใกล้ Red Zone (ค้าง 2 อย่างขึ้นไป)";
+  return { targets, unreg, label };
 }
 
-function docMessage(exam?: Exam | null, unfilled = false, opts?: AcademicOpts): string {
-  const title = exam?.doc_title || exam?.name || "เอกสารแบ่งข้อรับผิดชอบ";
-  const docLink = exam?.doc_link || "(ยังไม่ได้ใส่ลิงก์เอกสาร)";
-  const tpl = opts?.template?.trim() || DEFAULT_TEMPLATES[unfilled ? "doc_unfilled" : "doc"];
-  let msg = tpl.replace(/\{ชื่อเอกสาร\}/g, title);
-  msg = appendLink(msg, docLink); // ลิงก์เอกสารเสมอ
-  msg = appendLink(msg, opts?.link); // ลิงก์เพิ่มเติมจากฝ่ายวิชาการ (ถ้ามี)
-  return msg;
+// ── preview: นับผู้รับ + ตัวอย่างการ์ด (ไม่ส่งจริง) ───────────────────────────
+export interface AcademicPreview { count: number; audience: string; card: MsgCard | null; unreg: number; error?: string }
+export async function academicPreview(mode: AcademicMode, opts?: AcademicOpts): Promise<AcademicPreview> {
+  const t = await buildTargets(mode, opts);
+  // ตัวอย่าง = คนที่มีรายการเยอะสุด (เห็นว่ามีหลายข้อสอบแล้วมีปุ่มแยก)
+  const best = [...t.targets].sort((a, b) => b.card.bubbles.length - a.card.bubbles.length)[0];
+  return { count: t.targets.length, audience: t.label + (t.unreg ? ` · อีก ${t.unreg} คนยังไม่ลงทะเบียน (ส่งไม่ได้)` : ""), card: best?.card ?? null, unreg: t.unreg, error: t.error };
 }
 
-export interface AcademicSendResult { ok: boolean; count: number; testMode: boolean; sample?: string; error?: string; code?: string }
+export interface AcademicSendResult { ok: boolean; count: number; testMode: boolean; error?: string; code?: string }
 
-// testMode = ส่งตัวอย่างให้แอดมินเท่านั้น · ไม่ใช่ testMode = ร่างข้อความเฉพาะคนไป "รออนุมัติ" (ไม่ส่งตรงถึงเพื่อนเด็ดขาด)
-export async function academicBroadcast(
-  mode: AcademicMode, testMode: boolean, adminIds: string[], exam?: Exam | null, opts?: AcademicOpts
-): Promise<AcademicSendResult> {
-  let targets: { sid: string; lineUserId: string; msg: string }[] = [];
-
-  if (mode === "doc") {
-    if (!exam?.doc_link) return { ok: false, count: 0, testMode, error: "no_doc_link" };
-    const msg = docMessage(exam, false, opts);
-    targets = (await verifiedMembers()).map((m) => ({ sid: digits(m.matched_student_id), lineUserId: m.line_user_id, msg }));
-  } else if (mode === "doc_unfilled") {
-    if (!exam?.doc_link) return { ok: false, count: 0, testMode, error: "no_doc_link" };
-    const msg = docMessage(exam, true, opts);
-    const set = new Set(idList(exam.not_filled_ids ?? "").map(digits));
-    targets = (await verifiedMembers()).filter((m) => set.has(digits(m.matched_student_id))).map((m) => ({ sid: digits(m.matched_student_id), lineUserId: m.line_user_id, msg }));
-  } else {
-    const { rows, size } = await ranking();
-    targets = rows
-      .map((r) => ({ r, msg: messageFor(mode, r, opts, size) }))
-      .filter((x) => x.msg && x.r.lineUserId)
-      .map((x) => ({ sid: digits(x.r.student_id), lineUserId: x.r.lineUserId, msg: x.msg! }));
-  }
-
-  if (targets.length === 0) return { ok: false, count: 0, testMode, error: "no_recipients" };
-  const sample = targets[0].msg;
+// testMode = ส่งการ์ดตัวอย่างจริงให้แอดมินดูใน LINE · ไม่ใช่ testMode = ส่งถึงเพื่อนทันที (ฝ่ายวิชาการมีสิทธิ์ส่งเองตามที่ประธาน/แอดมินอนุญาต)
+export async function academicBroadcast(mode: AcademicMode, testMode: boolean, adminIds: string[], opts?: AcademicOpts): Promise<AcademicSendResult> {
+  const t = await buildTargets(mode, opts);
+  if (t.error) return { ok: false, count: 0, testMode, error: t.error };
+  if (!t.targets.length) return { ok: false, count: 0, testMode, error: "no_recipients" };
+  const best = [...t.targets].sort((a, b) => b.card.bubbles.length - a.card.bubbles.length)[0];
   try {
     if (testMode) {
-      const preview = `[ทดสอบวิชาการ] โหมด "${AUDIENCE_LABEL[mode]}" จะส่งถึง ${targets.length} คน\nตัวอย่างข้อความที่ผู้รับจะเห็น:\n\n${sample}`;
-      for (const a of adminIds) await pushTo(a, [{ type: "text", text: preview }]);
-      return { ok: true, count: targets.length, testMode, sample };
+      for (const a of adminIds) await pushTo(a, [{ type: "text", text: `[ทดสอบวิชาการ] จะส่งถึง ${t.targets.length} คน — ${t.label}\nตัวอย่างที่คนหนึ่งจะได้รับ 👇` }, ...cardToMessages(best.card)]);
+      return { ok: true, count: t.targets.length, testMode };
     }
-    const { createOutbox } = await import("@/lib/bc/outbox");
-    const per: Record<string, { type: "text"; text: string }[]> = {};
-    for (const t of targets) per[t.sid] = [{ type: "text", text: t.msg.slice(0, 4900) }];
+    const { createOutbox, approveAndSend } = await import("@/lib/bc/outbox");
+    const per: Record<string, Msg[]> = {};
+    for (const x of t.targets) per[x.sid] = cardToMessages(x.card);
+    const title = mode === "invite" ? "ชวนกรอกข้อสอบ" : mode === "chase" ? "ตามคนที่ยังไม่ได้กรอก" : "แจ้งสถานะ Red Zone";
     const item = await createOutbox({
-      kind: "academic", title: `วิชาการ: ${AUDIENCE_LABEL[mode]}${exam ? ` · ${exam.name}` : ""} (${targets.length} คน)`,
+      kind: "academic", title: `วิชาการ: ${title} (${t.targets.length} คน)`,
       audience: `ids:${Object.keys(per).join(",")}`, messages: [], perRecipient: per,
-      preview: `${targets.every((t) => t.msg === sample) ? "" : "ข้อความเฉพาะคน — ตัวอย่าง:\n\n"}${sample}`,
+      preview: `${t.label}\nแต่ละคนได้ 1 ข้อความ (การ์ดเลื่อนได้ · ปุ่มลิงก์แยกทีละข้อสอบ)\n\nตัวอย่าง: ${best.card.title}\n${best.card.text}\n${best.card.lines.join("\n")}`,
+      notify: false,
     });
-    return { ok: true, count: targets.length, testMode, sample, code: item.code };
+    // ฝ่ายวิชาการมีสิทธิ์ส่งเอง: กดส่ง = ส่งทันที (แถวใน BC_outbox เป็นประวัติ)
+    const sent = await approveAndSend(item.id, opts?.by || "academic");
+    if (!sent.ok) return { ok: false, count: 0, testMode, error: sent.error, code: item.code };
+    return { ok: true, count: sent.count, testMode, code: item.code };
   } catch (err) {
     return { ok: false, count: 0, testMode, error: String(err) };
   }
@@ -306,7 +366,7 @@ export async function runDueDocReminders(adminIds: string[], now = Date.now()): 
     if (e.doc_reminder_status !== "pending" || !e.doc_reminder_at || !e.doc_link) continue;
     const t = new Date(e.doc_reminder_at).getTime();
     if (isNaN(t) || t > now) continue;
-    const r = await academicBroadcast("doc", false, adminIds, e, { template: e.doc_reminder_template }); // ส่งจริงถึงทุกคน
+    const r = await academicBroadcast("invite", false, adminIds, { examIds: [e.exam_id], template: e.doc_reminder_template, by: "academic:ตั้งเวลา" }); // ฝ่ายวิชาการตั้งเวลาไว้เอง -> ส่งทันทีเมื่อถึงเวลา
     if (e.__row) await patchRecord("exams", e.__row, e as never, { doc_reminder_status: "sent" });
     if (r.ok) sent++;
   }

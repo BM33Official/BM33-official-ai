@@ -1,6 +1,7 @@
 "use client";
 // เงินรุ่นรายเดือน: วงแหวน + ช่องละ 1 คน (แตะ = สลับจ่ายแล้ว/ยังไม่จ่าย) + ปุ่มเตือนคนที่ยังไม่จ่าย
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Bell, Save, Undo2 } from "lucide-react";
 import { act } from "./api";
 import { Ring } from "./kit";
@@ -11,6 +12,7 @@ type M = { month: string; label: string; amount: string; due_date: string };
 const PAID: Cell[] = ["paid", "yearly", "waived", "partial"];
 
 export default function FinanceBoard({ months, rows, initial }: { months: M[]; rows: Row[]; initial: string }) {
+  const router = useRouter();
   const [month, setMonth] = useState(initial);
   const [changes, setChanges] = useState<Map<string, string>>(new Map());
   const [busy, setBusy] = useState(false);
@@ -37,22 +39,22 @@ export default function FinanceBoard({ months, rows, initial }: { months: M[]; r
     const list = Array.from(changes.entries()).map(([k, kind]) => { const [student_id, mo] = k.split("|"); return { student_id, month: mo, kind }; });
     const r = await act("finance.pay", { changes: list });
     setBusy(false);
-    if (r.ok) { setMsg({ ok: true, t: `บันทึก ${r.n} คนแล้ว — เพื่อนเห็นในแอปทันที` }); setTimeout(() => window.location.reload(), 800); }
+    if (r.ok) { setMsg({ ok: true, t: `บันทึก ${r.n} คนแล้ว — เพื่อนและฝ่ายวิชาการเห็นทันที` }); setChanges(new Map()); router.refresh(); }
     else setMsg({ ok: false, t: `ไม่สำเร็จ: ${r.error}` });
   }
   async function remind() {
-    if (!confirm(`ร่างข้อความเตือนเฉพาะคนที่ยังไม่จ่าย ${m?.label || month}?\n(แต่ละคนเห็นยอดของตัวเอง · ยังไม่ส่ง รอแอดมินกดอนุมัติ)`)) return;
+    if (!confirm(`ส่งข้อความเตือนถึงคนที่ยังไม่จ่าย ${m?.label || month} ตอนนี้เลย?\n(แต่ละคนเห็นยอดของตัวเอง · ส่งทันที ไม่ต้องรออนุมัติ)`)) return;
     setBusy(true); setMsg(null);
     const r = await act("finance.remindUnpaid", { month });
     setBusy(false);
     if (!r.ok) setMsg({ ok: false, t: `ไม่สำเร็จ: ${r.error}` });
     else if (!r.count) setMsg({ ok: true, t: "ทุกคนที่ลงทะเบียนจ่ายครบแล้ว 🎉" });
-    else setMsg({ ok: true, t: `ร่างแล้ว #${r.code} · ${r.count} คน — แอดมินได้รับการ์ดใน LINE ให้กดอนุมัติ${Number(r.unreg) ? ` · อีก ${r.unreg} คนยังไม่ลงทะเบียน (ส่งไม่ได้)` : ""}` });
+    else setMsg({ ok: true, t: `ส่งแล้ว ${r.count} คน ✓${Number(r.unreg) ? ` · อีก ${r.unreg} คนยังไม่ลงทะเบียน (ส่งไม่ได้)` : ""}` });
   }
 
   if (!months.length) return <div className="card"><span className="hint">ตั้งยอดเดือนแรกก่อน (ด้านล่าง “ตั้งยอดแต่ละเดือน”)</span></div>;
   return (
-    <div className="card">
+    <div className="card" data-dirty={changes.size ? "1" : "0"}>
       <div className="seg" style={{ overflowX: "auto", flexWrap: "nowrap", maxWidth: "100%" }}>
         {months.map((x) => <button key={x.month} className={x.month === month ? "on" : ""} onClick={() => setMonth(x.month)}>{x.label || x.month}</button>)}
       </div>

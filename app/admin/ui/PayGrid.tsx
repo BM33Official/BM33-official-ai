@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { act } from "./api";
 
 type Cell = "paid" | "yearly" | "waived" | "partial" | "unpaid" | "overdue" | "upcoming";
@@ -10,7 +11,8 @@ const NEXT: Record<string, string> = { "": "monthly", monthly: "", waived: "", y
 const CELL_OF: Record<string, Cell> = { monthly: "paid", yearly: "yearly", waived: "waived", partial: "partial" };
 
 export default function PayGrid({ months, rows: init }: { months: { month: string; label: string; amount: string }[]; rows: Row[] }) {
-  const [rows, setRows] = useState<Row[]>(init);
+  const router = useRouter();
+  const rows = init; // ใช้ค่าล่าสุดจากเซิร์ฟเวอร์เสมอ (อัปเดตสดเมื่อคนอื่นแก้)
   const [changes, setChanges] = useState<Map<string, string>>(new Map());
   const [q, setQ] = useState("");
   const [only, setOnly] = useState<"all" | "owe">("all");
@@ -37,7 +39,7 @@ export default function PayGrid({ months, rows: init }: { months: { month: strin
     const list = Array.from(changes.entries()).map(([k, kind]) => { const [student_id, month] = k.split("|"); return { student_id, month, kind }; });
     const r = await act("finance.pay", { changes: list });
     setBusy(false);
-    if (r.ok) { setMsg(`บันทึก ${r.n} ช่องแล้ว ✅ สมาชิกเห็นในแอปทันที`); setTimeout(() => window.location.reload(), 800); }
+    if (r.ok) { setMsg(`บันทึก ${r.n} ช่องแล้ว ✅ สมาชิกและฝ่ายวิชาการเห็นทันที`); setChanges(new Map()); router.refresh(); }
     else setMsg(`ไม่สำเร็จ: ${r.error}`);
   }
 
@@ -48,7 +50,7 @@ export default function PayGrid({ months, rows: init }: { months: { month: strin
   }), [rows, changes, months]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="card">
+    <div className="card" data-dirty={changes.size ? "1" : "0"}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div className="row">
           <input style={{ maxWidth: 240 }} placeholder="ค้นหาชื่อ/รหัส…" value={q} onChange={(e) => setQ(e.target.value)} />

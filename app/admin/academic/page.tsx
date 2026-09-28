@@ -12,8 +12,8 @@ import DrawPanel from "../ui/DrawPanel";
 import ExamCreate from "../ui/ExamCreate";
 import ExamActions from "../ui/ExamActions";
 import MarkGrid from "../ui/MarkGrid";
-import DocReminder from "../ui/DocReminder";
 import AcademicBroadcast from "../ui/AcademicBroadcast";
+import LiveSync from "../ui/LiveSync";
 import RecallWizard from "../ui/RecallWizard";
 
 export const runtime = "nodejs";
@@ -41,15 +41,21 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
   const hasAny = (r: (typeof rank.rows)[number]) => r.misses > 0 || r.feeMisses > 0;
   const rows = roster.map((r) => ({ student_id: digits(r.student_id), nickname: r.nickname || r.full_name || digits(r.student_id), name: r.full_name || "" }));
   const initial = selected ? String(selected.not_memorized_ids ?? "").split(",").map(digits).filter(Boolean) : [];
-  const initialDoc = selected ? String(selected.not_filled_ids ?? "").split(",").map(digits).filter(Boolean) : [];
-  const examsLite = exams.map((e) => ({
-    exam_id: e.exam_id, name: e.name, doc_link: e.doc_link ?? "", doc_title: e.doc_title ?? "",
-    doc_reminder_at: e.doc_reminder_at ?? "", doc_reminder_status: e.doc_reminder_status ?? "",
-  }));
+  const accepted = selected ? String(selected.accepted_ids ?? "").split(",").map(digits).filter(Boolean) : [];
+  const examsLite = byNew.map((e) => {
+    const acc = new Set(String(e.accepted_ids ?? "").split(",").map(digits));
+    return {
+      exam_id: e.exam_id, name: e.name, date: e.exam_date ?? "", doc_link: e.doc_link ?? "",
+      pending: String(e.not_memorized_ids ?? "").split(",").map(digits).filter((x) => x && !acc.has(x)).length,
+      doc_reminder_at: e.doc_reminder_at ?? "", doc_reminder_status: e.doc_reminder_status ?? "",
+    };
+  });
+  const strikes = (r: (typeof rank.rows)[number]) => r.misses + r.feeMisses;
 
   return (
     <div className="wrap">
-      <Head icon={GraduationCap} tone="purple" title="วิชาการ & Red Zone" sub={`อัปโหลดใบแบ่งข้อ + เอกสารข้อสอบ → AI ติ๊กให้ว่าใครยังไม่ได้จำ → คุณตรวจทานแล้วกดบันทึก · ${rank.size} อันดับแรกของคะแนนสะสม = Red Zone`} />
+      <Head icon={GraduationCap} tone="purple" title="วิชาการ & Red Zone" sub="สร้างข้อสอบ → AI หรือคุณติ๊กว่าใครยังไม่ได้กรอก → ส่งเตือนได้ทันที · ค้าง 1 = เฝ้าระวัง · 2 = ใกล้ · 3 ขึ้นไป = Red Zone" />
+      <div style={{ marginTop: -8, marginBottom: 14 }}><LiveSync /></div>
 
       <div className="card">
         <div className="card-h">
@@ -63,14 +69,14 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
           {students.map((s) => {
             const r = levelOf.get(s.sid);
             const lv = r?.level ?? "safe";
-            return <span key={s.sid} className={`d ${lv === "safe" ? "none" : lv}`} title={`${s.nickname} · ${LEVEL_TH[lv]}${r?.misses ? ` · พลาด ${r.misses} ครั้ง` : ""}${r?.feeMisses ? " · เงินรุ่นค้าง" : ""}`}>{s.no}</span>;
+            return <span key={s.sid} className={`d ${lv === "safe" ? "none" : lv}`} title={`${s.nickname} · ${LEVEL_TH[lv]}${r?.misses ? ` · ยังไม่ได้กรอก ${r.misses} ข้อสอบ` : ""}${r?.feeMisses ? " · เงินรุ่นค้าง" : ""}`}>{s.no}</span>;
           })}
         </div>
         <div className="legend" style={{ marginTop: 12 }}>
           <span><i style={{ background: "#ff3b30" }} />Red Zone {counts.red}</span><span><i style={{ background: "#ff9500" }} />ใกล้ {counts.close}</span>
           <span><i style={{ background: "#ffd60a" }} />เฝ้าระวัง {counts.watch}</span><span><i style={{ background: "#e5e5ea" }} />ปลอดภัย {counts.safe}</span>
         </div>
-        <div className="hint" style={{ marginTop: 8 }}>เพื่อนแต่ละคนเห็นเฉพาะสถานะของตัวเองในแอป</div>
+        <div className="hint" style={{ marginTop: 8 }}>นับ “ค้าง” = ข้อสอบที่ยังไม่ได้กรอก + เดือนเงินรุ่นที่เลยกำหนด · ค้าง 1 = เฝ้าระวัง · 2 = ใกล้ · 3 ขึ้นไป = Red Zone · เพื่อนแต่ละคนเห็นเฉพาะของตัวเองในแอป (แตะแล้วเห็นว่าค้างข้อสอบไหน ไปกรอกหรือกด “ยอมโดน” ได้)</div>
       </div>
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={ScanSearch} tone="blue" /> ตรวจจำข้อสอบ</h2>
@@ -81,22 +87,23 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
       {searchParams?.exam === "new" || !selected ? <ExamCreate /> : (
         <>
           <div className="row between" style={{ marginBottom: 10 }}>
-            <div><b style={{ fontSize: 18 }}>{selected.name}</b> <span className="hint">{selected.exam_date ? bkkDate(selected.exam_date) : ""}{selected.check_at ? ` · ตรวจล่าสุด ${thDateTime(selected.check_at)}` : ""} · ยังไม่ได้จำ {initial.length} คน</span></div>
+            <div><b style={{ fontSize: 18 }}>{selected.name}</b> <span className="hint">{selected.exam_date ? bkkDate(selected.exam_date) : ""}{selected.check_at ? ` · ตรวจล่าสุด ${thDateTime(selected.check_at)}` : ""} · ยังไม่ได้กรอก {initial.length} คน{accepted.length ? ` (ยอมโดน ${accepted.length})` : ""}</span></div>
             <ExamActions examId={selected.exam_id} examName={selected.name} />
           </div>
           <RecallWizard key={selected.exam_id} exam={{ id: selected.exam_id, name: selected.name, assign: selected.assign_json ?? "", count: Number(selected.question_count2) || 0 }} students={students} initialIds={initial} />
           <details className="more">
-            <summary><Hand size={16} /> ติ๊กเองทีละคน (ไม่ใช้ AI)</summary>
+            <summary><Hand size={16} /> ติ๊กเองทีละคน (ไม่ใช้ AI) — ใครยังไม่ได้กรอก</summary>
             <div className="stack" style={{ marginTop: 10 }}>
-              <MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initial} variant="memorize" />
-              {selected.doc_link && <><MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initialDoc} variant="doc" /><DocReminder examId={selected.exam_id} /></>}
+              <MarkGrid examId={selected.exam_id} examName={selected.name} rows={rows} initial={initial} accepted={accepted} />
             </div>
           </details>
+          {/* ตามเตือนเฉพาะข้อสอบนี้ — ตัวเลขอัปเดตทันทีหลังบันทึก */}
+          <div style={{ marginTop: 12 }}><AcademicBroadcast key={selected.exam_id} exams={examsLite} lockExam={selected.exam_id} version={initial.join(",") + "|" + accepted.join(",")} /></div>
         </>
       )}
       {exams.length === 0 && searchParams?.exam !== "new" && <div className="hint" style={{ marginTop: 8 }}>ยังไม่มีข้อสอบ — ตั้งชื่อด้านบนแล้วกดสร้าง</div>}
 
-      <h2 className="row" style={{ gap: 10 }}><Sq icon={MessageCircle} tone="line" /> ส่งข้อความถึงเพื่อน</h2>
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={MessageCircle} tone="line" /> ส่งข้อความถึงเพื่อน <span className="hint" style={{ fontWeight: 500 }}>เลือก 1 ใน 3 แบบ · กดส่งแล้วถึงเพื่อนทันที</span></h2>
       <AcademicBroadcast exams={examsLite} />
 
       <details className="more" style={{ marginTop: 22 }}>
@@ -104,13 +111,13 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
         <div style={{ marginTop: 10 }}><DrawPanel people={people} draws={drawRows} /></div>
       </details>
       <details className="more">
-        <summary><ListOrdered size={16} /> อันดับเต็ม (คะแนนสะสม — ข้อสอบล่าสุดมีน้ำหนักมากกว่า{rank.fees.on ? ` · เงินรุ่นเลยกำหนด เดือนละ ${rank.fees.weight}` : ""})</summary>
+        <summary><ListOrdered size={16} /> อันดับเต็ม (เรียงตามคะแนนสะสม — ข้อสอบล่าสุดมีน้ำหนักมากกว่า · สีตามจำนวนที่ค้าง)</summary>
         {rank.rows.some(hasAny) ? (
           <div className="list" style={{ marginTop: 10 }}>
             {rank.rows.filter(hasAny).map((r, i) => (
               <div key={r.student_id} className="li">
                 <span className={`ic ${r.level === "red" ? "c-red" : r.level === "close" ? "c-orange" : "c-yellow"}`} style={{ fontWeight: 800, fontSize: 13 }}>{i + 1}</span>
-                <div className="li-b"><b>{r.nickname} <span className="hint">#{Number(r.student_id.slice(-3))}</span>{!r.lineUserId && <span className="badge" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</b><small>{r.misses > 0 ? `พลาด ${r.misses} ครั้ง · ` : ""}{r.feeMisses > 0 ? `💸 เงินรุ่นค้าง${role === "admin" ? ` ${r.feeMonths.join(", ")}` : ""} · ` : ""}คะแนน {r.score}{r.missedExams.length ? ` · ${r.missedExams.join(", ")}` : ""}</small></div>
+                <div className="li-b"><b>{r.nickname} <span className="hint">#{Number(r.student_id.slice(-3))}</span>{!r.lineUserId && <span className="badge" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</b><small>ค้าง {strikes(r)} · {r.misses > 0 ? `ยังไม่ได้กรอก ${r.misses} ข้อสอบ · ` : ""}{r.feeMisses > 0 ? `💸 เงินรุ่นค้าง${role === "admin" ? ` ${r.feeMonths.join(", ")}` : ""} · ` : ""}คะแนน {r.score}{r.missedExams.length ? ` · ${r.missedExams.join(", ")}` : ""}</small></div>
                 <span className={`badge ${r.level === "red" ? "b-red" : r.level === "close" ? "b-orange" : ""}`}>{LEVEL_TH[r.level]}</span>
               </div>
             ))}

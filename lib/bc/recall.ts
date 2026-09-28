@@ -158,9 +158,12 @@ export async function saveCheck(examId: string, map: AssignMap, filled: number[]
   if (!e?.__row) return false;
   const assign = JSON.stringify(map);
   if (assign.length > 45_000) log.warn("assign_json_large", { len: assign.length });
+  const ids = Array.from(new Set(notMemorized.map(digits).filter(Boolean)));
+  const accepted = String(e.accepted_ids ?? "").split(",").map(digits).filter((x) => x && ids.includes(x));
   await patchRecord("exams", e.__row, e as never, {
     assign_json: assign.slice(0, 48_000), recalled: filled.join(","), check_at: nowISO(), question_count2: String(count),
-    not_memorized_ids: Array.from(new Set(notMemorized.map(digits).filter(Boolean))).join(","),
+    // รายชื่อเดียว "ยังไม่ได้กรอก" — ใช้ทั้ง Red Zone และการตามเตือน
+    not_memorized_ids: ids.join(","), not_filled_ids: ids.join(","), accepted_ids: accepted.join(","),
   });
   return true;
 }

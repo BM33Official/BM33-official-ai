@@ -14,7 +14,9 @@ import FinanceImport from "../ui/FinanceImport";
 import FinanceBoard from "../ui/FinanceBoard";
 import SlipQueue from "../ui/SlipQueue";
 import RedZoneFees from "../ui/RedZoneFees";
-import { ranking, overdueFees, redZoneFeeRule } from "@/lib/bc/academic";
+import FeeCarry from "../ui/FeeCarry";
+import LiveSync from "../ui/LiveSync";
+import { ranking, overdueFees, redZoneFeeRule, feeCarry } from "@/lib/bc/academic";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,14 +38,17 @@ export default async function FinancePage() {
   }));
   const decided = slips.filter((s) => s.status !== "pending").slice(-15).reverse();
   // Red Zone จากเงินรุ่น (เลยกำหนดแล้วยังไม่จ่าย)
-  const [overdue, rule, rank] = await Promise.all([overdueFees(), redZoneFeeRule(), ranking()]);
+  const [overdue, rule, rank, carry] = await Promise.all([overdueFees(), redZoneFeeRule(), ranking(), feeCarry()]);
   const levelOf = new Map(rank.rows.map((r) => [r.student_id, r.level]));
-  const overdueRows = Array.from(overdue.entries()).map(([sid, list]) => ({ sid, nickname: nick.get(sid) ?? sid, months: list, level: levelOf.get(sid) ?? "safe" }))
+  const owedIds = Array.from(new Set([...Array.from(overdue.keys()), ...Array.from(carry.keys())]));
+  const overdueRows = owedIds.map((sid) => ({ sid, nickname: nick.get(sid) ?? sid, months: [...(carry.get(sid) ? [`ค้างยกมา ${carry.get(sid)} เดือน`] : []), ...(overdue.get(sid) ?? [])], level: levelOf.get(sid) ?? "safe" }))
     .sort((a, b) => b.months.length - a.months.length || a.sid.localeCompare(b.sid));
+  const carryPeople = roster.map((r) => ({ sid: r.student_id, no: Number(r.student_id.slice(-3)), nickname: r.nickname || r.full_name })).sort((a, b) => a.no - b.no);
 
   return (
     <div className="wrap">
-      <Head icon={Wallet} tone="teal" title="เงินรุ่น" sub="เพื่อนส่งรูปสลิปในแอปหรือในแชตบอท → AI อ่านยอด ผู้รับ และเช็กสลิปซ้ำให้ → คุณแค่กดยืนยัน" />
+      <Head icon={Wallet} tone="teal" title="เงินรุ่น" sub="เพื่อนส่งรูปสลิปในแอปหรือในแชตบอท → AI อ่านยอด ผู้รับ และเช็กสลิปซ้ำให้ → คุณแค่กดยืนยัน · กดเตือนแล้วส่งถึงเพื่อนทันที" />
+      <div style={{ marginTop: -8, marginBottom: 14 }}><LiveSync /></div>
 
       {pending.length > 0 && (
         <>
@@ -57,6 +62,9 @@ export default async function FinancePage() {
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={Flame} tone="red" /> Red Zone จากเงินรุ่น {overdueRows.length > 0 && <span className="badge b-red">{overdueRows.length} คน</span>}</h2>
       <RedZoneFees on={rule.on} weight={rule.weight} rows={overdueRows} />
+
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={History} tone="orange" /> ค้างยกมา (กรอกเอง ไม่ต้องเริ่มใหม่) {carry.size > 0 && <span className="badge b-orange">{carry.size} คน</span>}</h2>
+      <FeeCarry people={carryPeople} initial={Object.fromEntries(carry)} />
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={Landmark} tone="green" /> บัญชีรับเงิน & การตรวจสลิป</h2>
       <FinanceSettings cfg={cfg} />

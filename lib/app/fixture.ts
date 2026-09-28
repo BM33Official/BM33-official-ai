@@ -80,7 +80,7 @@ export function applyFixture<T extends State>(s: T, opts: { draw?: string } = {}
     outstanding: 300, overdue: 0, paidCount: 3, yearly: false,
     next: { month: "2026-10", label: "ต.ค. 69", amount: 300, due: at(18, "23:59"), state: "unpaid", paid_at: "", note: "" },
   };
-  mine.zone = { level: "close", misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], feeMisses: 1, feeMonths: ["ก.ย. 69"], gauge: 0.72, title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ข้อที่ค้างก่อนสอบครั้งหน้านะ" };
+  mine.zone = { misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], feeMisses: 1, feeMonths: ["ก.ย. 69"], strikes: 3, exams: [{ id: "EX-FX1", name: "Genetics II", link: "https://docs.google.com/document/d/example-genetics", date: "2026-09-21", accepted: false }, { id: "EX-FX2", name: "Immune Quiz 1", link: "https://docs.google.com/document/d/example-immune", date: "2026-09-14", accepted: true }], gauge: 1, level: "red", title: "อยู่ใน Red Zone", text: "ค้างตั้งแต่ 3 อย่างขึ้นไป ค่อย ๆ เคลียร์ทีละอย่าง เดี๋ยวก็หลุดโซน 💪" };
   if (opts.draw) {
     const show = opts.draw === "reveal" ? now - 120_000 : now - 20_000;
     const reveal = opts.draw === "reveal" ? now - 10_000 : now + 70_000;

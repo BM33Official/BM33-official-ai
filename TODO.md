@@ -1,3 +1,12 @@
+# BM33 v6 — วิชาการ / การเงิน round (2026-09-28)
+- [x] Red Zone levels by count of "ค้าง" (unfilled exams + overdue/carried fee months): 1 เฝ้าระวัง · 2 ใกล้ · 3+ Red Zone — still sorted by score (`levelFor`, `ZONE_RED`)
+- [x] One list per exam "ยังไม่ได้กรอก" (not_memorized_ids = not_filled_ids) — MarkGrid single grid, AI saveCheck writes both · `accepted_ids` column (SCHEMA v3.3)
+- [x] App Red Zone: list of my unfilled exams → "ไปกรอก" (exam doc link) + "จำไม่ได้ ยอมโดน" (`accept` API; still counts, excluded from chasing)
+- [x] ส่งข้อความถึงเพื่อน = 3 modes: invite (ก่อนตรวจ, everyone, schedulable) · chase (หลังตรวจ, 1 carousel per person, button per exam) · zone (2+ ค้าง) — `MsgCard` shared by LINE flex + web preview
+- [x] **ฝ่ายวิชาการ/การเงิน send directly** (no admin approval) — outbox row kept as history (user decision 2026-09-28)
+- [x] Finance: batch settings save (`setConfigMany`, parallel appends used to overwrite each other) · live refresh (LiveSync, router.refresh every 15 s unless typing/dirty) · "ค้างยกมา" per-person months (`fee_carry_json`, paste from sheet)
+- [x] New-exam card with visible border + labels · credits = visible "ใครสร้างแอปนี้?" button in ของฉัน, faster animated reveal
+
 # BM33 v5 — fixes round (2026-09-28)
 - [x] Onboarding examples everywhere = "บิงโก วีร์ทิวัตถ์ 071" (ชื่อเล่น ชื่อจริง 3 ตัวท้าย) — bot ASK/retry, app sign-in, /join
 - [x] App สิ่งที่ต้องกรอก: tap a ticked item → "ยกเลิกติ๊ก" (`unclaim`, only own self-claims) · link stays visible ("เปิด") after ticking

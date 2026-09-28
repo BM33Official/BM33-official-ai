@@ -1,183 +1,168 @@
 "use client";
+// ส่งข้อความถึงเพื่อน (วิชาการ) — 3 แบบที่ต่างกันชัด ๆ · กดส่ง = ส่งทันที (ฝ่ายวิชาการมีสิทธิ์ส่งเอง)
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { FileText, UserX, Flame, Send, FlaskConical, Clock } from "lucide-react";
 import { act } from "./api";
 import { bkkDateTime } from "@/lib/bc/format";
 
-type ExamLite = { exam_id: string; name: string; doc_link: string; doc_title: string; doc_reminder_at: string; doc_reminder_status: string };
-type Mode = "unmemorized" | "redzone" | "rest" | "doc";
+export type ExamLite = { exam_id: string; name: string; date: string; doc_link: string; pending: number; doc_reminder_at: string; doc_reminder_status: string };
+type Mode = "invite" | "chase" | "zone";
+type Card = { color: string; head: string; title: string; text: string; lines: string[]; bubbles: { title: string; sub: string; buttons: { label: string; url: string }[] }[]; app: { label: string; url: string } };
 
-const MODES: { key: Mode; label: string; desc: string; tokens: string }[] = [
-  { key: "unmemorized", label: "ยังไม่ได้จำ (ทุกคน)", desc: "ทุกคนที่ยังมีข้อสอบไม่ได้จำ อย่างน้อย 1 ครั้ง", tokens: "{ชื่อเล่น} {จำนวน} {ข้อสอบ}" },
-  { key: "redzone", label: "เฉพาะ Red Zone", desc: "อันดับท้ายของรุ่น (ข้อสอบที่ยังไม่ได้จำ + เงินรุ่นเลยกำหนด)", tokens: "{ชื่อเล่น} {จำนวน} {ข้อสอบ} {เงินรุ่น} {จำนวนโซน}" },
-  { key: "rest", label: "ใกล้ Red Zone", desc: "คนที่ยังไม่ได้จำ แต่ยังไม่ถึง Red Zone", tokens: "{ชื่อเล่น} {จำนวน} {ข้อสอบ} {ระยะห่าง}" },
-  { key: "doc", label: "เตือนกรอกเอกสาร", desc: "ส่งลิงก์เอกสารแบ่งข้อ ให้ทุกคนไปกรอก (ตั้งเวลาส่งได้)", tokens: "{ชื่อเอกสาร}" },
+const MODES: { key: Mode; icon: typeof FileText; title: string; when: string; desc: string; tone: string }[] = [
+  { key: "invite", icon: FileText, title: "ชวนทุกคนไปกรอก", when: "ก่อนตรวจ", desc: "ส่งปุ่มลิงก์เอกสารของข้อสอบที่เลือก ให้ทุกคนที่ลงทะเบียน · ตั้งเวลาส่งได้", tone: "#4F46E5" },
+  { key: "chase", icon: UserX, title: "ตามคนที่ยังไม่ได้กรอก", when: "หลังตรวจ", desc: "เฉพาะคนที่ยังไม่ได้กรอก · 1 ข้อความรวมทุกข้อสอบที่ค้าง + ปุ่ม “ไปกรอก” แยกทีละข้อสอบ · ไม่ส่งถึงคนที่กดยอมโดนแล้ว", tone: "#E11D48" },
+  { key: "zone", icon: Flame, title: "แจ้งสถานะ Red Zone", when: "เมื่อไรก็ได้", desc: "คนที่ค้างตั้งแต่ 2 อย่าง (ใกล้ + Red Zone) ได้รู้ระดับของตัวเอง พร้อมรายการที่ค้างและปุ่มลิงก์", tone: "#EA580C" },
 ];
-
-// ค่าเริ่มต้นของช่องแก้ไข (ตรงกับ DEFAULT_TEMPLATES ฝั่งเซิร์ฟเวอร์)
 const DEFAULTS: Record<Mode, string> = {
-  unmemorized: `{ชื่อเล่น} จ๋า 📝\n\nมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง:\n{ข้อสอบ}\n\nหาเวลาทยอยจำนะ สู้ ๆ 😊`,
-  redzone: `{ชื่อเล่น} จ๋า 📕\n\nตอนนี้เธออยู่ใน red zone แล้วน้า (นับจากข้อสอบที่ยังไม่ได้จำ + เงินรุ่นที่เลยกำหนด · {จำนวนโซน} อันดับท้ายของรุ่น)\n{ข้อสอบ}{เงินรุ่น}\n\nค่อย ๆ ทยอยเคลียร์นะ เดี๋ยวก็หลุดโซนแล้ว สู้ ๆ 💪`,
-  rest: `{ชื่อเล่น} จ๋า 📖\n\nยังมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง ({ข้อสอบ})\nอีกแค่ {ระยะห่าง} ครั้งจะเข้า red zone แล้วน้า\n\nเร่งจำอีกนิดนะ เป็นกำลังใจให้ 🔥`,
-  doc: `ฝากกรอกเอกสารแบ่งข้อรับผิดชอบด้วยน้า 📄\n\n"{ชื่อเอกสาร}"\n\nใครกรอกครบแล้วข้ามได้เลยน้า ขอบคุณมาก ๆ 🙏`,
+  invite: `ฝากทุกคนไปกรอกข้อที่ตัวเองรับผิดชอบใน "{ข้อสอบ}" ด้วยน้า 📄\nกรอกครบแล้วข้ามได้เลย ขอบคุณมาก ๆ 🙏`,
+  chase: `{ชื่อเล่น} จ๋า 📝 ยังไม่เห็นข้อที่รับผิดชอบใน {จำนวน} ข้อสอบนี้เลย กดปุ่มไปกรอกทีละอันได้เลยน้า\nถ้าจำไม่ได้จริง ๆ กด “จำไม่ได้ ยอมโดน” ในแอปได้ ระบบจะไม่ตามอีก`,
+  zone: `{ชื่อเล่น} จ๋า 📕 ตอนนี้อยู่ระดับ “{ระดับ}” (ค้าง {ค้าง} อย่าง · ครบ 3 = Red Zone)\nเคลียร์ทีละอย่างได้เลย เดี๋ยวก็หลุดโซน สู้ ๆ 💪`,
 };
-
+const TOKENS: Record<Mode, string> = { invite: "{ข้อสอบ}", chase: "{ชื่อเล่น} {จำนวน} {ข้อสอบ}", zone: "{ชื่อเล่น} {ระดับ} {ค้าง}" };
 const toISO = (local: string) => (local ? new Date(local).toISOString() : "");
 
-export default function AcademicBroadcast({ exams }: { exams: ExamLite[] }) {
-  const [mode, setMode] = useState<Mode>("unmemorized");
-  const [examId, setExamId] = useState(exams.find((e) => e.doc_link)?.exam_id ?? "");
-  const [text, setText] = useState(DEFAULTS.unmemorized);
+export default function AcademicBroadcast({ exams, lockExam, version = "" }: { exams: ExamLite[]; lockExam?: string; version?: string }) {
+  const router = useRouter();
+  const compact = !!lockExam;
+  const [mode, setMode] = useState<Mode>("chase");
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(lockExam ? [lockExam] : exams.filter((e) => e.pending > 0).map((e) => e.exam_id)));
+  const [invite, setInvite] = useState(exams.find((e) => e.doc_link)?.exam_id ?? exams[0]?.exam_id ?? "");
+  const [text, setText] = useState(DEFAULTS.chase);
   const [link, setLink] = useState("");
-  const [testMode, setTestMode] = useState(true);
+  const [testMode, setTestMode] = useState(false);
   const [when, setWhen] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ t: string; ok: boolean } | null>(null);
-  const [pv, setPv] = useState<{ count: number; sample: string; audience: string } | null>(null);
-  const [loadingPv, setLoadingPv] = useState(false);
-
-  const docExams = exams.filter((e) => e.doc_link);
-  const curExam = docExams.find((e) => e.exam_id === examId);
-  const modeInfo = MODES.find((m) => m.key === mode)!;
+  const [pv, setPv] = useState<{ count: number; audience: string; card: Card | null } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const info = MODES.find((m) => m.key === mode)!;
+  const examIds = mode === "invite" ? [invite] : mode === "chase" ? Array.from(picked) : [];
+  const curInvite = exams.find((e) => e.exam_id === invite);
 
   function changeMode(m: Mode) { setMode(m); setText(DEFAULTS[m]); setMsg(null); }
 
-  // โหลดตัวอย่าง + จำนวนผู้รับ (debounce กันยิงถี่ตอนพิมพ์)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    setLoadingPv(true);
+    setLoading(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      act("academic.preview", { mode, examId: mode === "doc" ? examId : "", template: text, link })
-        .then((r) => { if (r.ok) setPv({ count: r.count as number, sample: r.sample as string, audience: r.audience as string }); })
-        .finally(() => setLoadingPv(false));
+      act("academic.preview", { mode, examIds, template: text, link })
+        .then((r) => { if (r.ok) setPv({ count: r.count as number, audience: r.audience as string, card: r.card as Card | null }); })
+        .finally(() => setLoading(false));
     }, 350);
     return () => { if (timer.current) clearTimeout(timer.current); };
-  }, [mode, examId, text, link]);
-
-  const payload = () => ({ mode, examId: mode === "doc" ? examId : "", template: text, link });
+  }, [mode, examIds.join(","), text, link, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function send() {
-    if (mode === "doc" && !examId) { setMsg({ t: "เลือกข้อสอบที่มีลิงก์เอกสารก่อนน้า", ok: false }); return; }
-    if (!testMode && !confirm(`ร่างข้อความถึง "${pv?.audience || modeInfo.label}" (${pv?.count ?? 0} คน)?\nยังไม่ส่ง — ไปรอแอดมินกดอนุมัติก่อน`)) return;
+    if (mode === "chase" && !examIds.length) { setMsg({ t: "เลือกข้อสอบอย่างน้อย 1 อัน", ok: false }); return; }
+    if (!testMode && !confirm(`ส่งถึง ${pv?.count ?? 0} คนตอนนี้เลย?\n(${info.title} · ส่งทันที ไม่ต้องรออนุมัติ)`)) return;
     setBusy(true); setMsg(null);
-    const r = await act("academic.broadcast", { ...payload(), testMode });
+    const r = await act("academic.broadcast", { mode, examIds, template: text, link, testMode });
     setBusy(false);
-    if (r.ok) setMsg({ t: r.testMode ? `ส่งตัวอย่างให้แอดมินแล้ว (${r.count} คนจะได้รับ)` : `ร่างแล้ว #${r.code} · ${r.count} คน → รอแอดมินอนุมัติ (แอดมินได้การ์ดใน LINE)`, ok: true });
-    else {
-      const reason = r.error === "no_doc_link" ? "ข้อสอบนี้ยังไม่มีลิงก์เอกสาร" : r.error === "no_recipients" ? "ไม่มีผู้รับในกลุ่มนี้" : r.error;
-      setMsg({ t: `ส่งไม่ได้: ${reason}`, ok: false });
-    }
+    if (r.ok) { setMsg({ t: r.testMode ? `ส่งตัวอย่างเข้า LINE แอดมินแล้ว (ตอนส่งจริงจะถึง ${r.count} คน)` : `ส่งแล้ว ${r.count} คน ✓`, ok: true }); if (!r.testMode) router.refresh(); }
+    else setMsg({ t: `ส่งไม่ได้: ${r.error === "no_recipients" ? "ไม่มีใครต้องได้รับ" : r.error}`, ok: false });
   }
-  async function schedule() {
-    if (!examId) { setMsg({ t: "เลือกข้อสอบก่อนน้า", ok: false }); return; }
-    if (!when) { setMsg({ t: "เลือกวัน–เวลาที่จะให้ส่งก่อนน้า", ok: false }); return; }
+  async function schedule(at: string) {
     setBusy(true); setMsg(null);
-    const combined = link.trim() ? `${text}\n\n${link.trim()}` : text;
-    const r = await act("academic.scheduleDoc", { examId, at: toISO(when), template: combined });
+    const r = await act("academic.scheduleDoc", { examId: invite, at: at ? toISO(at) : "", template: text });
     setBusy(false);
-    if (r.ok) { setMsg({ t: `ตั้งเวลาส่งเรียบร้อย ✅ ระบบจะส่งให้ทุกคนอัตโนมัติเมื่อถึงเวลา`, ok: true }); setTimeout(() => window.location.reload(), 900); }
-    else setMsg({ t: "ตั้งเวลาไม่ได้ (ข้อสอบนี้ต้องมีลิงก์เอกสารก่อน)", ok: false });
-  }
-  async function cancelSchedule() {
-    if (!examId) return;
-    setBusy(true);
-    const r = await act("academic.scheduleDoc", { examId, at: "" });
-    setBusy(false);
-    if (r.ok) { setMsg({ t: "ยกเลิกกำหนดเวลาแล้ว", ok: true }); setTimeout(() => window.location.reload(), 700); }
+    setMsg(r.ok ? { t: at ? "ตั้งเวลาแล้ว ✓ ถึงเวลาระบบส่งให้ทุกคนเอง" : "ยกเลิกเวลาส่งแล้ว", ok: true } : { t: "ตั้งเวลาไม่ได้ (ข้อสอบต้องมีลิงก์เอกสาร)", ok: false });
+    if (r.ok) router.refresh();
   }
 
   return (
-    <div className="card">
-      <h2 style={{ marginTop: 0 }}>ประกาศเฉพาะกลุ่ม (วิชาการ)</h2>
-      <p className="hint" style={{ marginTop: -6 }}>เลือกกลุ่มผู้รับ → แก้ข้อความได้ → ดูตัวอย่าง + จำนวนคน → กดส่ง</p>
-
-      <div className="field">
-        <label>1. จะส่งถึงใคร?</label>
-        <div className="chips">
+    <div className={`card ab ${compact ? "ab-compact" : ""}`}>
+      {!compact && (
+        <div className="ab-modes">
           {MODES.map((m) => (
-            <label key={m.key} className={`chip ${mode === m.key ? "on" : ""}`}>
-              <input type="radio" name="acadmode" checked={mode === m.key} onChange={() => changeMode(m.key)} />
-              {m.label}
-            </label>
+            <button key={m.key} className={`ab-mode ${mode === m.key ? "on" : ""}`} style={{ ["--t" as string]: m.tone }} onClick={() => changeMode(m.key)}>
+              <span className="ab-ic"><m.icon size={18} /></span>
+              <span className="ab-mt"><b>{m.title}</b><small>{m.when}</small></span>
+              <span className="ab-md">{m.desc}</span>
+            </button>
           ))}
         </div>
-        <p className="hint">{modeInfo.desc}</p>
-      </div>
+      )}
+      {compact && <div className="row between"><b>ส่งเตือนคนที่ยังไม่ได้กรอกข้อสอบนี้</b><span className="badge b-red">{pv?.count ?? "—"} คน</span></div>}
 
-      {mode === "doc" && (
-        <div className="field">
-          <label>เอกสารของข้อสอบไหน?</label>
-          {docExams.length === 0 ? (
-            <p className="hint" style={{ margin: 0 }}>ยังไม่มีข้อสอบที่ใส่ลิงก์เอกสาร — ใส่ลิงก์ตอนสร้างข้อสอบก่อนน้า</p>
-          ) : (
-            <select value={examId} onChange={(e) => setExamId(e.target.value)}>
-              {docExams.map((e) => <option key={e.exam_id} value={e.exam_id}>{e.doc_title || e.name}</option>)}
-            </select>
+      <div className="split" style={{ marginTop: 16 }}>
+        <div>
+          {mode === "invite" && (
+            <div className="field">
+              <label>ข้อสอบไหน?</label>
+              <select value={invite} onChange={(e) => setInvite(e.target.value)}>
+                {exams.map((e) => <option key={e.exam_id} value={e.exam_id}>{e.name}{e.doc_link ? "" : " (ยังไม่มีลิงก์เอกสาร)"}</option>)}
+              </select>
+            </div>
           )}
-          {curExam?.doc_reminder_status === "pending" && curExam.doc_reminder_at && (
-            <div className="msg msg-ok" style={{ marginTop: 10 }}>
-              ⏰ ตั้งเวลาส่งอัตโนมัติไว้: {bkkDateTime(curExam.doc_reminder_at)} น.
-              <button className="btn-sm btn-ghost" style={{ marginLeft: 8 }} onClick={cancelSchedule} disabled={busy}>ยกเลิก</button>
+          {mode === "chase" && !compact && (
+            <div className="field">
+              <label>ตามข้อสอบไหนบ้าง? (แต่ละคนเห็นเฉพาะอันที่ตัวเองค้าง)</label>
+              <div className="chips">
+                {exams.map((e) => (
+                  <label key={e.exam_id} className={`chip ${picked.has(e.exam_id) ? "on" : ""}`}>
+                    <input type="checkbox" checked={picked.has(e.exam_id)} onChange={() => setPicked((s) => { const n = new Set(s); if (n.has(e.exam_id)) n.delete(e.exam_id); else n.add(e.exam_id); return n; })} />
+                    {e.name} · {e.pending} คน{e.doc_link ? "" : " · ไม่มีลิงก์"}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="field">
+            <label>ข้อความ (แก้ได้)</label>
+            <textarea value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: compact ? 80 : 104 }} />
+            <div className="row between"><span className="hint" style={{ margin: 0 }}>ตัวแปร: <b>{TOKENS[mode]}</b></span><button className="btn-sm btn-ghost" onClick={() => setText(DEFAULTS[mode])}>คืนค่าเริ่มต้น</button></div>
+          </div>
+          {!compact && (
+            <div className="field">
+              <label>ปุ่มลิงก์เพิ่มเติม (ไม่บังคับ)</label>
+              <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://… (ลิงก์ของแต่ละข้อสอบใส่ให้อัตโนมัติแล้ว)" />
+            </div>
+          )}
+          <div className="stat" style={{ fontSize: 30 }}>{pv?.count ?? "—"}<small> คนจะได้รับ · คนละ 1 ข้อความ</small></div>
+          <p className="hint" style={{ marginTop: 2 }}>{pv?.audience}</p>
+          <label className="row" style={{ gap: 8, fontWeight: 600, margin: "8px 0 12px" }}>
+            <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
+            <FlaskConical size={15} /> ส่งตัวอย่างเข้า LINE แอดมินก่อน (ยังไม่ถึงเพื่อน)
+          </label>
+          {msg && <div className={`msg ${msg.ok ? "msg-ok" : "msg-err"}`}>{msg.t}</div>}
+          <button className={testMode ? "btn-primary" : "btn-green btn-lg"} onClick={send} disabled={busy || !pv?.count}>
+            <Send size={17} /> {busy ? "กำลังส่ง…" : testMode ? "ส่งตัวอย่างให้แอดมิน" : `ส่งถึง ${pv?.count ?? 0} คนเลย`}
+          </button>
+          {mode === "invite" && !compact && curInvite?.doc_link && (
+            <div className="ab-sched">
+              <Clock size={15} />
+              {curInvite.doc_reminder_status === "pending" && curInvite.doc_reminder_at ? (
+                <><span>ตั้งเวลาไว้ {bkkDateTime(curInvite.doc_reminder_at)} น.</span><button className="btn-sm btn-ghost" onClick={() => schedule("")} disabled={busy}>ยกเลิก</button></>
+              ) : (
+                <><span>หรือตั้งเวลา</span><input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ maxWidth: 220 }} /><button className="btn-sm" onClick={() => schedule(when)} disabled={busy || !when}>ตั้งเวลา</button></>
+              )}
             </div>
           )}
         </div>
-      )}
 
-      <div className="field">
-        <label>2. ข้อความ (แก้ได้)</label>
-        <textarea value={text} onChange={(e) => setText(e.target.value)} style={{ minHeight: 130 }} />
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <p className="hint" style={{ margin: "4px 0 0" }}>ตัวแปรที่ใช้ได้: <b>{modeInfo.tokens}</b> · ระบบจะแทนค่าจริงให้แต่ละคนอัตโนมัติ</p>
-          <button className="btn-sm btn-ghost" onClick={() => setText(DEFAULTS[mode])}>คืนค่าเริ่มต้น</button>
-        </div>
-      </div>
-
-      <div className="field">
-        <label>แนบลิงก์ท้ายข้อความ (ไม่บังคับ)</label>
-        <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="วางลิงก์ที่อยากให้ต่อท้ายทุกข้อความ เช่น เอกสาร/ฟอร์ม" />
-      </div>
-
-      <div className="field">
-        <label>3. ตัวอย่างที่ผู้รับจะเห็น {loadingPv && <span className="hint" style={{ fontWeight: 400 }}>· กำลังโหลด…</span>}</label>
-        <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "flex-start" }}>
-          <div className="preview" style={{ flex: "1 1 240px", maxWidth: 320 }}>
-            <div className="pb" style={{ fontSize: 13.5, color: "#171a2b" }}>
-              {pv?.sample || (loadingPv ? "…" : "— ยังไม่มีตัวอย่าง —")}
+        <div className="phone line">
+          <div className="hint" style={{ color: "#fff", fontWeight: 700, margin: 0 }}>{loading ? "กำลังโหลดตัวอย่าง…" : pv?.card ? "ตัวอย่างที่เพื่อนจะเห็นใน LINE (เลื่อนซ้าย-ขวาได้)" : "ยังไม่มีใครต้องได้รับ"}</div>
+          {pv?.card && (
+            <div className="lc-car">
+              <div className="lc-card sum">
+                <div className="lc-h" style={{ background: pv.card.color }}><small>{pv.card.head}</small><b>{pv.card.title}</b></div>
+                <div className="lc-body"><div style={{ whiteSpace: "pre-wrap" }}>{pv.card.text}</div>{pv.card.lines.map((l, i) => <small key={i} style={{ color: "#334155", fontWeight: 600 }}>{l}</small>)}</div>
+                <span className="lc-btn" style={{ background: pv.card.color }}>{pv.card.app.label}</span>
+              </div>
+              {pv.card.bubbles.map((b, i) => (
+                <div key={i} className="lc-card">
+                  <div className="lc-h" style={{ background: pv.card!.color }}><small>📄 ข้อสอบ</small></div>
+                  <div className="lc-body"><b>{b.title}</b>{b.sub && <small style={{ color: "#64748b" }}>{b.sub}</small>}</div>
+                  {b.buttons.map((x, j) => <span key={j} className={`lc-btn ${j ? "sec" : ""}`} style={j ? undefined : { background: pv.card!.color }}>{x.label}</span>)}
+                </div>
+              ))}
             </div>
-          </div>
-          <div style={{ flex: "1 1 170px" }}>
-            <div className="stat" style={{ fontSize: 30 }}>{pv?.count ?? "—"}<small> คนจะได้รับ</small></div>
-            <p className="hint" style={{ marginTop: 4 }}>{pv?.audience || ""}</p>
-          </div>
+          )}
         </div>
       </div>
-
-      <div className="field" style={{ marginBottom: 10 }}>
-        <label className="row" style={{ gap: 8, fontWeight: 700 }}>
-          <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} />
-          โหมดทดสอบ — ส่งตัวอย่างให้แอดมินเท่านั้น (ยังไม่ส่งถึงเพื่อนจริง)
-        </label>
-      </div>
-
-      {msg && <div className={`msg ${msg.ok ? "msg-ok" : "msg-err"}`}>{msg.t}</div>}
-
-      <div className="row">
-        <button className={testMode ? "btn-primary" : "btn-green"} onClick={send} disabled={busy || (pv?.count ?? 0) === 0}>
-          {busy ? "กำลังส่ง…" : testMode ? `🧪 ส่งทดสอบให้แอดมิน` : `📢 ร่างส่งถึง ${pv?.count ?? 0} คน (รออนุมัติ)`}
-        </button>
-      </div>
-
-      {mode === "doc" && examId && (
-        <>
-          <hr className="divider" />
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>หรือ ตั้งเวลา (ถึงเวลาแล้วระบบร่างไปรออนุมัติ)</label>
-          <div className="row">
-            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} style={{ maxWidth: 240 }} />
-            <button className="btn" onClick={schedule} disabled={busy || !when}>⏰ ตั้งเวลาส่ง</button>
-          </div>
-          <p className="hint">ระบบจะส่งข้อความ “เตือนกรอกเอกสาร” (ข้อความที่แก้ไว้ด้านบน) ให้สมาชิกทุกคนอัตโนมัติเมื่อถึงเวลา</p>
-        </>
-      )}
     </div>
   );
 }

@@ -71,7 +71,8 @@ export function stateFor(m: FeeMonth, p: Payment | undefined, now = Date.now()):
 
 export async function feeStatusFor(studentId: string, now = Date.now()) {
   const sid = digits(studentId);
-  const [months, payments] = await Promise.all([readFeeMonths(), readPayments()]);
+  const { feeCarry } = await import("@/lib/bc/academic");
+  const [months, payments, carry] = await Promise.all([readFeeMonths(), readPayments(), feeCarry().catch(() => new Map<string, number>())]);
   const mine = new Map(payments.filter((p) => p.student_id === sid).map((p) => [p.month, p]));
   const list: MonthStatus[] = months.map((m) => {
     const p = mine.get(m.month);
@@ -88,6 +89,7 @@ export async function feeStatusFor(studentId: string, now = Date.now()) {
     months: list,
     outstanding: owed.reduce((a, x) => a + x.amount, 0),
     overdue: list.filter((x) => x.state === "overdue").length,
+    carried: carry.get(sid) ?? 0, // เดือนที่ค้างยกมาจากระบบเดิม (ฝ่ายการเงินกรอก)
     paidCount: list.filter((x) => ["paid", "yearly", "waived", "partial"].includes(x.state)).length,
     yearly,
     next,
@@ -215,9 +217,10 @@ export async function queueUnpaidReminder(opts: { month?: string; note?: string;
   for (const r of roster) {
     const f = await feeStatusFor(r.student_id);
     const owed = f.months.filter((m) => (m.state === "unpaid" || m.state === "overdue") && (!opts.month || m.month === opts.month));
-    if (!owed.length) continue;
+    const carried = opts.month ? 0 : f.carried;
+    if (!owed.length && !carried) continue;
     if (!reg.has(r.student_id)) { unreg++; continue; }
-    const text = `${r.nickname || "เพื่อน"} จ๋า 💸 แอบมาเตือนเงินรุ่นน้า\n\n${owed.map((m) => `• ${m.label} ${m.amount} บาท${m.state === "overdue" ? " (เลยกำหนดแล้ว)" : m.due ? ` (ภายใน ${m.due.slice(0, 10)})` : ""}`).join("\n")}\nรวม ${owed.reduce((a, m) => a + m.amount, 0).toLocaleString()} บาท${cfg.payment_info ? `\n\nวิธีจ่าย: ${cfg.payment_info}` : ""}${opts.note ? `\n\n${opts.note}` : ""}\n\nจ่ายแล้วส่งสลิปในแอปหรือส่งรูปสลิปในแชตนี้ได้เลย ถ้าจ่ายไปแล้วทักฝ่ายการเงินได้เลยนะ 🙏`;
+    const text = `${r.nickname || "เพื่อน"} จ๋า 💸 แอบมาเตือนเงินรุ่นน้า\n\n${carried ? `• ค้างยกมาจากก่อนหน้า ${carried} เดือน\n` : ""}${owed.map((m) => `• ${m.label} ${m.amount} บาท${m.state === "overdue" ? " (เลยกำหนดแล้ว)" : m.due ? ` (ภายใน ${m.due.slice(0, 10)})` : ""}`).join("\n")}\nรวม ${owed.reduce((a, m) => a + m.amount, 0).toLocaleString()} บาท${cfg.payment_info ? `\n\nวิธีจ่าย: ${cfg.payment_info}` : ""}${opts.note ? `\n\n${opts.note}` : ""}\n\nจ่ายแล้วส่งสลิปในแอปหรือส่งรูปสลิปในแชตนี้ได้เลย ถ้าจ่ายไปแล้วทักฝ่ายการเงินได้เลยนะ 🙏`;
     per[r.student_id] = reminderMessages({ text, title: "เงินรุ่น", links, color: "#059669" });
   }
   const ids = Object.keys(per);
@@ -226,7 +229,11 @@ export async function queueUnpaidReminder(opts: { month?: string; note?: string;
   const item = await createOutbox({
     kind: "fee", title: `เตือนเงินรุ่น${opts.month ? ` ${monthLabel(opts.month)}` : ""} (${ids.length} คน)`,
     audience: `ids:${ids.join(",")}`, messages: [], perRecipient: per,
-    preview: `ข้อความเฉพาะคน — ตัวอย่าง:\n\n${sample}`,
+    preview: `ข้อความเฉพาะคน — ตัวอย่าง:\n\n${sample}`, notify: false,
   });
-  return { code: item.code, count: ids.length, unreg };
+  // ฝ่ายการเงินมีสิทธิ์ส่งเอง: กดเตือน = ส่งทันที (แถวใน BC_outbox เป็นประวัติ)
+  const { approveAndSend } = await import("@/lib/bc/outbox");
+  const sent = await approveAndSend(item.id, opts.by);
+  if (!sent.ok) throw new Error(sent.error || "ส่งไม่สำเร็จ");
+  return { code: item.code, count: sent.count, unreg };
 }

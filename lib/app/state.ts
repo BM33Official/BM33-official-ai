@@ -12,7 +12,7 @@ import { getConfig } from "@/lib/bc/config";
 import { readRoster } from "@/lib/bc/roster";
 import { feeStatusFor } from "@/lib/bc/fees";
 import { formStatesFor } from "@/lib/bc/status";
-import { ranking } from "@/lib/bc/academic";
+import { ranking, pendingExams, ZONE_RED } from "@/lib/bc/academic";
 import { drawsForStudent, readDraws, drawPhase, drawIds } from "@/lib/bc/draws";
 import { getFortune, fortuneBoard } from "@/lib/bc/fortune";
 import { dayDiff, bkkDayKey } from "@/lib/time";
@@ -68,16 +68,17 @@ export async function publicBoard() {
 }
 
 const ZONE_COPY: Record<string, { title: string; text: string }> = {
-  safe: { title: "ปลอดภัย", text: "จำข้อสอบครบ เงินรุ่นก็ไม่ค้าง เก่งมาก ✨" },
-  watch: { title: "เฝ้าระวังนิดนึง", text: "มีบางอย่างที่ยังค้างอยู่ ทยอยเคลียร์ให้ครบนะ" },
-  close: { title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ที่ค้างก่อนสอบครั้งหน้านะ" },
-  red: { title: "อยู่ใน Red Zone", text: "ตอนนี้อยู่ในกลุ่มที่ต้องเร่งเคลียร์ ค่อย ๆ เก็บทีละอย่าง เดี๋ยวก็หลุดโซน 💪" },
+  safe: { title: "ปลอดภัย", text: "ไม่มีอะไรค้างเลย เก่งมาก ✨" },
+  watch: { title: "เฝ้าระวัง", text: "ค้างอยู่ 1 อย่าง เคลียร์ให้หมดก่อนจะกลายเป็น 3 นะ" },
+  close: { title: "ใกล้ Red Zone", text: "ค้าง 2 อย่างแล้ว อีกอย่างเดียวจะเข้า Red Zone ขอแรงอีกนิด" },
+  red: { title: "อยู่ใน Red Zone", text: "ค้างตั้งแต่ 3 อย่างขึ้นไป ค่อย ๆ เคลียร์ทีละอย่าง เดี๋ยวก็หลุดโซน 💪" },
 };
 
 export async function personalState(sid: string) {
-  const [roster, fees, forms, rank, draws, fortune, committee, slips] = await Promise.all([
+  const [roster, fees, forms, rank, draws, fortune, committee, slips, pend] = await Promise.all([
     readRoster(), feeStatusFor(sid), formStatesFor(sid), ranking(), drawsForStudent(sid), getFortune(sid), readCommittee(),
     import("@/lib/bc/slips").then((m) => m.readSlips()).catch(() => []),
+    pendingExams().catch(() => new Map()),
   ]);
   const me = roster.find((r) => r.student_id === sid);
   const r = rank.rows.find((x) => x.student_id === sid);
@@ -96,8 +97,11 @@ export async function personalState(sid: string) {
       missedExams: r?.missedExams ?? [],
       feeMisses: r?.feeMisses ?? 0,
       feeMonths: r?.feeMonths ?? [],
-      // สเกล 0-1 สำหรับเกจ (เทียบกับเส้น red zone — ไม่บอกอันดับหรือชื่อใคร)
-      gauge: rank.threshold > 0 && r ? Math.min(1, r.score / rank.threshold) : 0,
+      strikes: (r?.misses ?? 0) + (r?.feeMisses ?? 0),
+      // ข้อสอบที่ยังไม่ได้กรอก (เฉพาะของฉัน) + ลิงก์ไปกรอก + สถานะ "ยอมโดน"
+      exams: ((pend.get(sid) ?? []) as { exam_id: string; name: string; link: string; date: string; accepted: boolean }[]).map((e) => ({ id: e.exam_id, name: e.name, link: e.link, date: e.date, accepted: e.accepted })),
+      // สเกล 0-1 สำหรับเกจ (ค้างครบ 3 = เต็ม — ไม่บอกอันดับหรือชื่อใคร)
+      gauge: Math.min(1, ((r?.misses ?? 0) + (r?.feeMisses ?? 0)) / ZONE_RED),
       ...ZONE_COPY[level],
     },
     draws,

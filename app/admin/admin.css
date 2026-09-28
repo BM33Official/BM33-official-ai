@@ -397,3 +397,49 @@ details.who-col:not([open]) .who-h { margin-bottom: 0; }
 .lc-body small { display: block; font-size: 11px; font-weight: 800; margin-top: 2px; }
 .lc-btn { margin: 0 8px 8px; padding: 7px; border-radius: 8px; text-align: center; color: #fff; font-size: 12px; font-weight: 800; }
 .lc-btn.sec { background: #f1f5f9; color: #334155; }
+
+/* อัปเดตสด */
+.live-sync { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); background: var(--fill); padding: 4px 6px 4px 10px; border-radius: 99px; }
+.live-sync i { width: 7px; height: 7px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 0 rgba(52,199,89,.6); animation: livePulse 2s infinite; }
+.live-sync button { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--card, #fff); color: var(--muted); cursor: pointer; }
+@keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(52,199,89,.55); } 70% { box-shadow: 0 0 0 7px rgba(52,199,89,0); } 100% { box-shadow: 0 0 0 0 rgba(52,199,89,0); } }
+
+/* ค้างยกมา */
+.carry-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 6px; margin-top: 12px; max-height: 460px; overflow-y: auto; }
+.carry-it { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 10px; border-radius: 12px; background: var(--fill); border: 2px solid transparent; }
+.carry-it.on { background: rgba(255,149,0,.12); }
+.carry-it.dirty { border-color: #ff9500; }
+.carry-n { font-size: 12px; color: var(--muted); font-weight: 700; width: 34px; }
+.carry-name { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.carry-b { width: 26px; height: 26px; border-radius: 8px; border: 0; background: var(--card, #fff); display: grid; place-items: center; cursor: pointer; color: var(--text); }
+.carry-b:disabled { opacity: .35; cursor: default; }
+.carry-v { width: 22px; text-align: center; font-size: 15px; }
+.carry-it.on .carry-v { color: #c2410c; }
+
+/* ข้อสอบใหม่ — กรอบชัด */
+.exam-create { border: 1.5px solid rgba(175,82,222,.35); }
+.exam-create input { border-color: rgba(60,60,67,.18); background: #fff; }
+.exam-create input:focus { border-color: var(--purple); box-shadow: 0 0 0 4px rgba(175,82,222,.14); }
+
+/* ส่งข้อความถึงเพื่อน (วิชาการ) */
+.ab-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 900px) { .ab-modes { grid-template-columns: minmax(0, 1fr); } }
+.ab-mode { text-align: left; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; padding: 14px; border-radius: 16px; background: var(--fill); border: 2px solid transparent; cursor: pointer; font: inherit; color: inherit; transition: border-color .15s, background .15s, transform .15s; }
+.ab-mode:hover { transform: translateY(-1px); }
+.ab-mode.on { border-color: var(--t); background: color-mix(in srgb, var(--t) 8%, #fff); }
+.ab-ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: var(--t); }
+.ab-mt { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ab-mt b { font-size: 15.5px; }
+.ab-mt small { font-size: 11.5px; font-weight: 800; color: var(--t); background: color-mix(in srgb, var(--t) 12%, transparent); padding: 1px 8px; border-radius: 99px; }
+.ab-md { font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.ab-sched { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--fill); font-size: 13.5px; color: var(--muted); }
+.ab-compact { background: linear-gradient(180deg, #fff6f7, #fff); border: 1.5px solid rgba(225,29,72,.25); }
+
+/* Red Zone จากเงินรุ่น — ชิปกะทัดรัด */
+.rzf-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.rzf { display: inline-flex; align-items: baseline; gap: 5px; padding: 5px 10px; border-radius: 99px; background: var(--fill); font-size: 13px; border: 1.5px solid transparent; }
+.rzf b { font-size: 12px; color: var(--muted); }
+.rzf small { font-size: 11.5px; color: var(--muted); }
+.rzf.watch { border-color: #ffd60a; background: rgba(255,214,10,.12); }
+.rzf.close { border-color: #ff9500; background: rgba(255,149,0,.12); }
+.rzf.red { border-color: #ff3b30; background: rgba(255,59,48,.1); }

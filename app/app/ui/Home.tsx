@@ -149,7 +149,7 @@ export default function Home({
         </button>
         <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
           <span className="al-ic"><IShield width={18} height={18} /></span>
-          <span className="al-t"><small>จำข้อสอบ</small><b>{zone.title}</b>{zoneBad && <em>ยังไม่ได้จำ {zone.misses} ครั้ง</em>}</span>
+          <span className="al-t"><small>Red Zone · ค้าง {zone.strikes}/3</small><b>{zone.title}</b>{zone.strikes > 0 && <em>แตะเพื่อดูว่าค้างอะไร</em>}</span>
         </button>
       </div>
 

@@ -146,6 +146,16 @@ export async function POST(req: Request, { params }: { params: { action: string 
         return NextResponse.json({ ok: true, state: "none" });
       }
 
+      case "accept": {
+        // "จำไม่ได้ ยอมโดน" — ยังนับใน Red Zone แต่กรรมการไม่ต้องตามเตือนข้อสอบนี้แล้ว (on=false = ยกเลิก)
+        const s = currentSession();
+        if (!s) return bad("unauthorized", 401);
+        if (s.preview) return bad("โหมดพรีวิวกดไม่ได้");
+        const { setAccepted } = await import("@/lib/bc/academic");
+        const ok = await setAccepted(String(body.examId ?? ""), s.sid, body.on !== false);
+        return ok ? NextResponse.json({ ok: true }) : bad("ข้อสอบนี้ไม่ได้ค้างอยู่แล้ว");
+      }
+
       case "slip": {
         const s = currentSession();
         if (!s) return bad("unauthorized", 401);

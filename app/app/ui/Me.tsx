@@ -38,7 +38,6 @@ export default function Me({
   const [sending, setSending] = useState(false);
   const [slipMsg, setSlipMsg] = useState("");
   const [credits, setCredits] = useState(false);
-  const taps = useRef<number[]>([]);
 
   useEffect(() => {
     if (!section) return;
@@ -91,7 +90,7 @@ export default function Me({
           <span>กรอกแล้ว</span>
         </div>
         <button className="ring-it press" onClick={() => zoneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          <Ring v={z.level === "safe" ? 1 : 1 - Math.min(1, z.gauge)} color={ZONE_COLOR[z.level]} label={z.level === "safe" ? "✓" : z.level === "red" ? "RED" : `${z.misses}`} />
+          <Ring v={z.level === "safe" ? 1 : 1 - Math.min(1, z.gauge)} color={ZONE_COLOR[z.level]} label={z.level === "safe" ? "✓" : z.level === "red" ? "RED" : `ค้าง ${z.strikes}`} />
           <span>Red Zone</span>
         </button>
       </div>
@@ -102,7 +101,8 @@ export default function Me({
         <div className="muted small" style={{ padding: "0 6px" }}>ฝ่ายการเงินยังไม่ได้เปิดรอบเงินรุ่นในระบบ</div>
       ) : (
         <div className="plain">
-          <div className="me-amount" style={{ color: f.overdue ? "#fecdd3" : undefined }}>{f.outstanding > 0 ? `${f.outstanding.toLocaleString()} บาท` : "จ่ายครบแล้ว 🎉"}</div>
+          <div className="me-amount" style={{ color: f.overdue ? "#fecdd3" : undefined }}>{f.outstanding > 0 ? `${f.outstanding.toLocaleString()} บาท` : f.carried ? "ค้างยกมา" : "จ่ายครบแล้ว 🎉"}</div>
+          {f.carried > 0 && <div className="zone-fee" style={{ marginTop: 6 }}>📒 ค้างยกมาจากก่อนเริ่มใช้แอป {f.carried} เดือน · สอบถามยอดกับฝ่ายการเงิน</div>}
           {f.next && (
             <div className="soft small">
               รอบ {f.next.label} {f.next.amount.toLocaleString()} บาท{f.next.due ? ` · ${new Date(f.next.due).getTime() < Date.now() ? "เลยกำหนดเมื่อ" : "ภายใน"} ${thDateTime(f.next.due)}` : ""}
@@ -136,19 +136,26 @@ export default function Me({
         </div>
       )}
 
-      {/* red zone = ข้อสอบที่ยังไม่ได้จำ + เงินรุ่นที่เลยกำหนด */}
-      <div ref={zoneRef} className="sect big"><h2>Red Zone</h2></div>
+      {/* red zone = ข้อสอบที่ยังไม่ได้กรอก + เงินรุ่นที่เลยกำหนด · แตะแล้วเห็นว่าค้างอะไร ไปกรอก/ยอมโดนได้เลย */}
+      <div ref={zoneRef} className="sect big"><h2>Red Zone</h2><span className="chip" style={{ color: ZONE_COLOR[z.level] }}>ค้าง {z.strikes}/3</span></div>
       <div className="plain">
         <div className="gauge-wrap">
           <Gauge value={z.level === "safe" ? 0 : Math.max(0.12, z.gauge)} color={ZONE_COLOR[z.level]} />
           <div>
             <div className="b" style={{ fontSize: 20, color: ZONE_COLOR[z.level] }}>{z.title}</div>
             <div className="soft small" style={{ marginTop: 4, lineHeight: 1.5 }}>{z.text}</div>
-            {z.misses > 0 && <div className="tiny muted" style={{ marginTop: 8 }}>📕 ยังไม่ได้จำ {z.misses} ครั้ง: {z.missedExams.join(", ")}</div>}
-            {z.feeMisses > 0 && <button className="zone-fee press" onClick={() => feesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>💸 เงินรุ่นเลยกำหนด: {z.feeMonths.join(", ")} <IChevronR width={13} height={13} /></button>}
           </div>
         </div>
-        <div className="tiny muted" style={{ marginTop: 12 }}>นับจากข้อสอบที่ยังไม่ได้จำ (ครั้งล่าสุดมีน้ำหนักมากกว่า) + เงินรุ่นที่เลยกำหนดแล้วยังไม่จ่าย · เห็นแค่คุณกับกรรมการที่ดูแล</div>
+        <div className="zlevels">{(["watch", "close", "red"] as const).map((lv, i) => <span key={lv} className={z.strikes >= i + 1 ? "on" : ""} style={{ ["--c" as string]: ZONE_COLOR[lv] }}>{i + 1}{i === 2 ? "+" : ""}<small>{lv === "watch" ? "เฝ้าระวัง" : lv === "close" ? "ใกล้" : "Red Zone"}</small></span>)}</div>
+
+        {z.exams.length > 0 && (
+          <div className="zexams">
+            <div className="tiny muted b" style={{ margin: "14px 2px 6px" }}>ข้อสอบที่ยังไม่ได้กรอก ({z.exams.length})</div>
+            {z.exams.map((e) => <ZoneExam key={e.id} e={e} api={api} refresh={refresh} toast={toast} preview={!!data.preview} />)}
+          </div>
+        )}
+        {z.feeMisses > 0 && <button className="zone-fee press" onClick={() => feesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>💸 เงินรุ่นที่ค้าง: {z.feeMonths.join(", ")} <IChevronR width={13} height={13} /></button>}
+        <div className="tiny muted" style={{ marginTop: 12, lineHeight: 1.55 }}>ค้าง = ข้อสอบที่ยังไม่ได้กรอก + เดือนเงินรุ่นที่เลยกำหนด · 1 เฝ้าระวัง · 2 ใกล้ · 3 ขึ้นไป Red Zone · “ยอมโดน” = ยังนับอยู่ แต่กรรมการจะไม่ตามเตือนข้อสอบนั้นอีก · เห็นแค่คุณกับกรรมการที่ดูแล</div>
       </div>
 
       {myDraws.length > 0 && (
@@ -183,16 +190,12 @@ export default function Me({
         ))}
       </div>
 
-      <div className="tiny muted me-foot" style={{ textAlign: "center", padding: "6px 20px 0", lineHeight: 1.6 }}
-        onClick={() => {
-          // ✦ แตะ 7 ครั้งติด ๆ กัน
-          const t = Date.now();
-          taps.current = [...taps.current.filter((x) => t - x < 3500), t];
-          if (taps.current.length >= 4) haptic(4);
-          if (taps.current.length >= 7) { taps.current = []; haptic(30); setCredits(true); }
-        }}>
-        <ISpark width={12} height={12} /> BM33 App · ข้อมูลอัปเดตอัตโนมัติจากกรรมการรุ่น
-      </div>
+      <button className="credits-btn press" onClick={() => { haptic(20); setCredits(true); }}>
+        <span className="cb-spark"><ISpark width={16} height={16} /></span>
+        <span className="cb-t"><b>ใครสร้างแอปนี้?</b><small>ดูเครดิตเบื้องหลัง BM33 App ✦</small></span>
+        <IChevronR width={16} height={16} />
+      </button>
+      <div className="tiny muted" style={{ textAlign: "center", padding: "2px 20px 0", lineHeight: 1.6 }}>BM33 App · ข้อมูลอัปเดตอัตโนมัติจากกรรมการรุ่น</div>
       {credits && <Credits onClose={() => setCredits(false)} />}
     </div>
   );
@@ -218,12 +221,14 @@ function TodayTodo({ data, go, openAnn, onFees, onZone }: { data: AppData; go: (
       out.push({ em: "📝", t: `กรอก ${f.name}`, s: f.deadline_at ? `ปิด ${relativeTh(f.deadline_at, now)}` : "ยังไม่มีกำหนดปิด", tone: d <= 1 ? "urgent" : d <= 3 ? "soon" : "normal", on: () => go("home", "todo") });
     }
     const fees = mine.fees;
+    if (fees.carried > 0 && !fees.outstanding) out.push({ em: "📒", t: `เงินรุ่นค้างยกมา ${fees.carried} เดือน`, s: "สอบถามยอดกับฝ่ายการเงิน", tone: "soon", on: onFees });
     if (fees.months.length && fees.outstanding > 0) {
       out.push({ em: "💸", t: `จ่ายเงินรุ่น ${fees.outstanding.toLocaleString()} บาท`, s: fees.overdue ? "เลยกำหนดแล้ว · นับใน Red Zone" : fees.next?.due ? `ภายใน ${thDateTime(fees.next.due)}` : "แนบสลิปในแอปได้เลย", tone: fees.overdue ? "urgent" : "soon", on: onFees });
     }
     const z = mine.zone;
     if (z.level === "red" || z.level === "close") {
-      out.push({ em: "📕", t: z.misses ? `ทบทวนข้อสอบที่ยังไม่ได้จำ (${z.misses})` : "เคลียร์ Red Zone", s: z.title, tone: z.level === "red" ? "urgent" : "soon", on: onZone });
+      const open = z.exams.filter((e) => !e.accepted).length;
+      out.push({ em: "📕", t: open ? `กรอกข้อสอบที่ค้าง (${open})` : "เคลียร์ Red Zone", s: `${z.title} · ค้าง ${z.strikes}/3`, tone: z.level === "red" ? "urgent" : "soon", on: onZone });
     }
     const classes = board.schedule.filter((c) => c.date === today).sort((a, b) => a.start.localeCompare(b.start));
     const nowHm = new Date(now + 7 * 3600_000).toISOString().slice(11, 16);
@@ -261,38 +266,77 @@ function TodayTodo({ data, go, openAnn, onFees, onZone }: { data: AppData; go: (
   );
 }
 
-// ✦ เครดิตลับ
-const ROLL = [
-  { k: "sm", t: "BM33 · LINE OA · App · Control Center" },
-  { k: "gap" },
-  { k: "sm", t: "คิด ออกแบบ และเขียนทุกบรรทัดโดย" },
-  { k: "xl", t: "บิงโก" },
-  { k: "md", t: "วีร์ทิวัตถ์ · ฝ่ายสื่อสารองค์กร" },
-  { k: "gap" },
-  { k: "sm", t: "บอทที่ตอบได้ทุกเรื่องของรุ่น" },
-  { k: "sm", t: "แอปที่รวมทุกประกาศไว้ที่เดียว" },
-  { k: "sm", t: "เซียมซีมังกร · ปฏิทิน · Red Zone" },
-  { k: "sm", t: "เตือนรวมข้อความเดียว · ศูนย์ควบคุมของกรรมการ" },
-  { k: "gap" },
-  { k: "md", t: "ทำขึ้นเพื่อให้ไม่มีใครต้องไล่แชตดันอีกต่อไป 💙" },
-  { k: "gap" },
-  { k: "sm", t: "ขอบคุณกรรมการรุ่นและเพื่อน BM33 ทุกคน" },
-  { k: "gap" },
-  { k: "tiny", t: "✦ คุณเจอความลับแล้ว อย่าบอกใครนะ 🤫" },
-] as const;
+// ── ข้อสอบที่ยังไม่ได้กรอก 1 รายการ: ไปกรอก / จำไม่ได้ ยอมโดน ─────────────────
+type ZE = { id: string; name: string; link: string; date: string; accepted: boolean };
+function ZoneExam({ e, api, refresh, toast, preview }: { e: ZE; api: Api; refresh: () => void; toast: (t: string) => void; preview: boolean }) {
+  const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
+  const [acc, setAcc] = useState(e.accepted);
+  useEffect(() => setAcc(e.accepted), [e.accepted]);
+  async function accept(on: boolean) {
+    haptic(); setBusy(true);
+    const r = await api("accept", { examId: e.id, on });
+    setBusy(false); setAsk(false);
+    if (r.ok) { setAcc(on); toast(on ? "รับทราบ ✓ กรรมการจะไม่ตามเตือนข้อสอบนี้แล้ว" : "ยกเลิกแล้ว ไปกรอกได้เลยนะ"); refresh(); }
+    else toast(String(r.error ?? "ลองใหม่อีกครั้งนะ"));
+  }
+  return (
+    <div className={`zx ${acc ? "acc" : ""}`}>
+      <div className="zx-top">
+        <span className="zx-ic">📝</span>
+        <span className="zx-b"><b>{e.name}</b><small>{acc ? "ยอมโดนแล้ว · ยังนับใน Red Zone แต่ไม่ถูกตามแล้ว" : e.date ? `สอบ ${thDateTime(e.date, false)}` : "ยังไม่ได้กรอกข้อที่รับผิดชอบ"}</small></span>
+      </div>
+      {ask ? (
+        <div className="zx-ask">
+          <span>จำไม่ได้จริง ๆ ใช่ไหม? ข้อสอบนี้ยังนับเป็น “ค้าง” ใน Red Zone แต่กรรมการจะไม่ทักตามอีก</span>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn sm" style={{ flex: 1, background: "linear-gradient(180deg,#fb7185,#e11d48)" }} disabled={busy} onClick={() => accept(true)}>ยอมโดน</button>
+            <button className="btn sm ghost" style={{ flex: 1 }} onClick={() => setAsk(false)}>ไว้ก่อน</button>
+          </div>
+        </div>
+      ) : (
+        <div className="row" style={{ gap: 8 }}>
+          {e.link && !acc && <a className="btn sm" style={{ flex: 1.3 }} href={e.link} target="_blank" rel="noopener noreferrer">ไปกรอก</a>}
+          {!acc ? <button className="btn sm ghost" style={{ flex: 1 }} disabled={preview || busy} onClick={() => { haptic(); setAsk(true); }}>จำไม่ได้ ยอมโดน</button>
+            : <button className="btn sm ghost" style={{ flex: 1 }} disabled={preview || busy} onClick={() => accept(false)}>ยกเลิก ยอมโดน</button>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ✦ เครดิต ────────────────────────────────────────────────────────────────
+const NAME = "บิงโก";
+const FEATS = ["🤖 บอทตอบได้ทุกเรื่องของรุ่น", "📱 แอปรวมทุกประกาศ", "🐉 เซียมซีมังกร", "📅 ปฏิทิน & ตาราง", "📕 Red Zone", "🔔 เตือนรวมข้อความเดียว", "🛠 ศูนย์ควบคุมกรรมการ"];
 
 function Credits({ onClose }: { onClose: () => void }) {
-  const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ x: (i * 73) % 100, y: (i * 37 + (i % 7) * 11) % 100, s: 1 + (i % 3), d: (i % 9) * 0.4 })), []);
-  useEffect(() => { const t = setTimeout(onClose, 30_000); return () => clearTimeout(t); }, [onClose]);
+  const stars = useMemo(() => Array.from({ length: 80 }, (_, i) => ({ x: (i * 73) % 100, y: (i * 37 + (i % 7) * 11) % 100, s: 1 + (i % 3), d: (i % 9) * 0.3 })), []);
+  const confetti = useMemo(() => Array.from({ length: 46 }, (_, i) => ({
+    x: 50 + Math.cos(i * 2.39) * (18 + (i % 5) * 7), r: (i * 47) % 360, d: 1.05 + (i % 6) * 0.07,
+    c: ["#fcd34d", "#7cc4ff", "#fb7185", "#a78bfa", "#4ade80", "#ffffff"][i % 6], dx: Math.cos(i * 1.7) * 160, dy: -120 - (i % 7) * 34,
+  })), []);
+  const parts = ["บิง", "โก"]; // แยกเป็นพยางค์ (ตัดสระ/วรรณยุกต์ไทยแยกตัวไม่ได้)
+  useEffect(() => { const t = setTimeout(onClose, 16_000); return () => clearTimeout(t); }, [onClose]);
   return (
     <Layer>
       <div className="credits" onClick={onClose} role="dialog" aria-label="เครดิต">
-        {stars.map((st, i) => <i key={i} style={{ left: `${st.x}%`, top: `${st.y}%`, width: st.s, height: st.s, animationDelay: `${st.d}s` }} />)}
+        {stars.map((st, i) => <i key={i} className="cr-star" style={{ left: `${st.x}%`, top: `${st.y}%`, width: st.s, height: st.s, animationDelay: `${st.d}s` }} />)}
         <div className="cr-glow" />
-        <div className="cr-roll">
+        <div className="cr-rings"><span /><span /><span /></div>
+        <div className="cr-stage">
           <div className="cr-logo">33</div>
-          {ROLL.map((r, i) => r.k === "gap" ? <div key={i} className="cr-gap" /> : <div key={i} className={`cr-${r.k}`}>{r.t}</div>)}
+          <div className="cr-kicker">BM33 · LINE OA · App · Control Center</div>
+          <div className="cr-by">คิด ออกแบบ และเขียนทุกบรรทัดโดย</div>
+          <div className="cr-name" aria-label={NAME}>
+            {parts.map((p, i) => <span key={i} style={{ animationDelay: `${0.9 + i * 0.22}s` }}>{p}</span>)}
+            <em className="cr-shine" />
+          </div>
+          <div className="cr-sub">วีร์ทิวัตถ์ · ฝ่ายสื่อสารองค์กร BM33</div>
+          <div className="cr-orbit">{Array.from({ length: 8 }, (_, i) => <b key={i} style={{ ["--a" as string]: `${i * 45}deg`, animationDelay: `${i * -0.35}s` }}>✦</b>)}</div>
+          <div className="cr-feats">{FEATS.map((f, i) => <span key={f} style={{ animationDelay: `${2.2 + i * 0.16}s` }}>{f}</span>)}</div>
+          <div className="cr-thanks">ทำขึ้นเพื่อให้ไม่มีใครต้องไล่แชตดันอีกต่อไป 💙<br /><small>ขอบคุณกรรมการรุ่นและเพื่อน BM33 ทุกคน</small></div>
         </div>
+        <div className="cr-confetti">{confetti.map((c, i) => <i key={i} style={{ left: `${c.x}%`, background: c.c, animationDelay: `${c.d}s`, ["--dx" as string]: `${c.dx}px`, ["--dy" as string]: `${c.dy}px`, ["--r" as string]: `${c.r}deg` }} />)}</div>
         <div className="cr-tap">แตะเพื่อปิด</div>
       </div>
     </Layer>

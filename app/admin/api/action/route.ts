@@ -10,7 +10,7 @@ import {
 import { messageQuota } from "@/lib/line";
 import {
   addExam, deleteExam, setNotMemorized, setNotFilled, scheduleDocReminder,
-  academicBroadcast, academicPreview, getExam, AcademicMode,
+  academicBroadcast, academicPreview, getExam, AcademicMode, normMode,
 } from "@/lib/bc/academic";
 import {
   generateWeeklySummary, getSummary, sendSummaryToAll, updateSummary,
@@ -58,6 +58,10 @@ export async function POST(req: Request) {
   }
   const by = role === "admin" ? "admin" : role;
   const j = (x: Record<string, unknown>) => NextResponse.json({ ok: true, ...x });
+  const acadOpts = (b: Record<string, unknown>) => ({
+    template: b.template as string | undefined, link: b.link as string | undefined,
+    examIds: Array.isArray(b.examIds) ? (b.examIds as unknown[]).map(String) : b.examId ? [String(b.examId)] : undefined,
+  });
 
   try {
     await ensureBcTabs();
@@ -150,13 +154,12 @@ export async function POST(req: Request) {
       case "academic.scheduleDoc":
         return NextResponse.json({ ok: await scheduleDocReminder(String(body.examId ?? ""), String(body.at ?? ""), String(body.template ?? "")) });
       case "academic.preview": {
-        const exam = body.examId ? await getExam(String(body.examId)) : null;
-        const p = await academicPreview(body.mode as AcademicMode, exam, { template: body.template as string | undefined, link: body.link as string | undefined });
+        const p = await academicPreview(normMode(String(body.mode)), acadOpts(body));
         return j({ ...p });
       }
       case "academic.broadcast": {
-        const exam = body.examId ? await getExam(String(body.examId)) : null;
-        const r = await academicBroadcast(body.mode as AcademicMode, body.testMode !== false, adminLineIds(), exam, { template: body.template as string | undefined, link: body.link as string | undefined });
+        // ฝ่ายวิชาการกดส่ง = ส่งถึงเพื่อนทันที (ไม่ต้องรอแอดมินอนุมัติ) · ยังบันทึกประวัติใน รออนุมัติ > ประวัติ
+        const r = await academicBroadcast(normMode(String(body.mode)), body.testMode !== false, adminLineIds(), { ...acadOpts(body), by: `${role}:web` });
         return NextResponse.json({ ...r });
       }
       case "draw.create": {
@@ -282,6 +285,25 @@ export async function POST(req: Request) {
         return j({});
       }
 
+      case "finance.settings": {
+        // บันทึกหลายช่องพร้อมกันแบบไม่ชนกัน (เดิมยิงทีละช่องพร้อมกัน -> ค่าหาย)
+        const allowed = ["payment_info", "payment_link", "finance_sheet_link", "payment_account_name", "payment_account_no", "slip_auto_approve", "red_zone_fees", "red_zone_fee_weight"];
+        const values = (body.values ?? {}) as Record<string, unknown>;
+        const clean: Record<string, string> = {};
+        for (const [k, v] of Object.entries(values)) { if (!allowed.includes(k)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 }); clean[k] = String(v ?? ""); }
+        const { setConfigMany } = await import("@/lib/bc/config");
+        await setConfigMany(clean, `by ${by}`);
+        return j({});
+      }
+      case "finance.carry": {
+        // ยอดค้างยกมา (เดือน) ต่อคน — ฝ่ายการเงินกรอกเองได้ ไม่ต้องนำเข้าไฟล์เก่า
+        const map = (body.map ?? {}) as Record<string, unknown>;
+        const out: Record<string, number> = {};
+        for (const [k, v] of Object.entries(map)) { const sid = digits(k); const n = Math.max(0, Math.min(24, Math.round(Number(v) || 0))); if (sid && n > 0) out[sid] = n; }
+        const { setConfigMany } = await import("@/lib/bc/config");
+        await setConfigMany({ fee_carry_json: JSON.stringify(out) }, `by ${by}`);
+        return j({ n: Object.keys(out).length });
+      }
       case "finance.slip.decide": {
         const { decideSlip } = await import("@/lib/bc/slips");
         return NextResponse.json({ ok: await decideSlip(String(body.id), body.approve === true, by, body.month ? String(body.month) : undefined) });

@@ -10,8 +10,9 @@ export default function FinanceSettings({ cfg }: { cfg: Record<string, string> }
   });
   const [msg, setMsg] = useState("");
   async function save() {
-    const rs = await Promise.all(Object.entries(v).map(([key, value]) => act("finance.setting", { key, value: typeof value === "boolean" ? (value ? "1" : "") : value })));
-    setMsg(rs.every((r) => r.ok) ? "บันทึกแล้ว ✅" : "บันทึกไม่ได้บางช่อง");
+    const values = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === "boolean" ? (x ? "1" : "") : x]));
+    const r = await act("finance.settings", { values });
+    setMsg(r.ok ? "บันทึกแล้ว ✅" : `บันทึกไม่ได้: ${r.error ?? ""}`);
   }
   return (
     <div className="card">

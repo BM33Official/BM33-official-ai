@@ -62,6 +62,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "doc_link", "doc_title", "not_filled_ids", "doc_reminder_at", "doc_reminder_status",
     "doc_reminder_template",
     "assign_json", "recalled", "check_at", "question_count2",
+    "accepted_ids",
   ],
   summaries: ["id", "week", "kind", "title", "body", "status", "created_at", "sent_at", "schedule_at"],
 
@@ -116,6 +117,7 @@ export interface Exam {
   recalled?: string; // ข้อที่มีคนพิมพ์ลงเอกสารแล้ว (comma)
   check_at?: string; // เวลาที่ตรวจล่าสุด
   question_count2?: string; // จำนวนข้อทั้งหมด (จากการตรวจ)
+  accepted_ids?: string; // คนที่กด "จำไม่ได้ ยอมโดน" ในแอป (ยังนับ Red Zone แต่ไม่ต้องตามเตือนแล้ว)
 }
 
 export type OnboardingState = "awaiting_info" | "awaiting_confirm" | "done" | "mismatch";

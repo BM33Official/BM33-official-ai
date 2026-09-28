@@ -28,6 +28,7 @@ export type ConfigKey =
   | "usd_thb"
   | "red_zone_fees" // "0" = ไม่นับเงินรุ่นค้างใน red zone (ค่าเริ่มต้น = นับ)
   | "red_zone_fee_weight" // น้ำหนักต่อ 1 เดือนที่เลยกำหนดแล้วยังไม่จ่าย (ค่าเริ่มต้น 1 = เท่ากับไม่ได้จำข้อสอบ 1 ครั้งล่าสุด)
+  | "fee_carry_json" // {"<student_id>": เดือนที่ค้างยกมาจากระบบเดิม} — ฝ่ายการเงินกรอกเองได้ ไม่ต้องเริ่มใหม่
   | "digest_auto_day" // วันล่าสุดที่ระบบเสนอ "เตือนรวม" + LINE หาแอดมินแล้ว (กันซ้ำวันละครั้ง)
   | "fortune_pool_base"; // ยอดเขย่ารวมทั้งรุ่น ณ แจ็กพอตล่าสุด (Jackpot Pool = ยอดรวมตอนนี้ − ค่านี้) // อัตราแลกเปลี่ยนสำหรับแสดงค่า AI เป็นบาท (ค่าเริ่มต้น 33) // "1" = สลิปที่ AI ตรวจแล้วผ่านทุกข้อ ลงว่าจ่ายแล้วทันที (ฝ่ายการเงินย้อนได้)
 
@@ -50,6 +51,21 @@ export async function setConfig(key: ConfigKey, value: string, note = ""): Promi
   await upsertWhere("config", (r) => String(r.key ?? "") === key, {
     key, value, updated_at: nowISO(), note,
   });
+}
+
+// ตั้งหลายค่าพร้อมกันแบบปลอดภัย: อ่านสด 1 ครั้ง -> แก้แถวเดิมทีละแถว -> คีย์ใหม่ append รวดเดียว
+// (เดิมหน้าเว็บยิง setConfig พร้อมกันหลายตัว -> append ชนกันในชีต ค่าบางตัวหาย)
+export async function setConfigMany(values: Partial<Record<ConfigKey, string>>, note = ""): Promise<void> {
+  const { readKeyFresh, patchRecord, appendRecords } = await import("@/lib/bc/sheets");
+  const rows = await readKeyFresh("config");
+  const creates: Record<string, string>[] = [];
+  for (const [key, value] of Object.entries(values)) {
+    const rec = { key, value: String(value ?? ""), updated_at: nowISO(), note };
+    const hit = rows.find((r) => String(r.key ?? "") === key);
+    if (hit) await patchRecord("config", hit.__row, hit as never, rec);
+    else creates.push(rec);
+  }
+  if (creates.length) await appendRecords("config", creates);
 }
 
 // รหัสผ่าน role เก็บเป็น hash เท่านั้น (ไม่เก็บ plain text ในชีต)
