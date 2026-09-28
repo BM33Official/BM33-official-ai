@@ -9,8 +9,12 @@ import { readRoster } from "@/lib/bc/roster";
 import { readOutbox, resolveAudience, audienceLabel, unpackMessages } from "@/lib/bc/outbox";
 import ConfirmButtons from "../ui/ConfirmButtons";
 import OutboxCard from "../ui/OutboxCard";
+import BatchCard, { type BatchEntry } from "../ui/BatchCard";
+import { reminderCandidates, batchKeys, normalizeKeys, type DigestItem } from "@/lib/bc/digest";
+import { verifiedMembers } from "@/lib/bc/members";
+import { fixtureEnabled } from "@/lib/app/fixture";
 import { Head, Sq, Empty } from "../ui/kit";
-import { thDateTime, agoTh } from "@/lib/time";
+import { thDateTime, agoTh, relativeTh } from "@/lib/time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +30,28 @@ export default async function InboxPage() {
   const now = Date.now();
   const pending = outbox.filter((o) => o.status === "pending" && !(o.expires_at && new Date(o.expires_at).getTime() < now));
   const history = outbox.filter((o) => !pending.includes(o)).slice(-12).reverse();
-  const items = await Promise.all(pending.map(async (o) => {
+  // เตือนรวม (รายการเดียวที่รวมทุกเรื่อง) — แยกจากรายการอื่น
+  const batches = pending.filter((o) => batchKeys(o));
+  const others = pending.filter((o) => !batchKeys(o));
+  const demo = fixtureEnabled() && !batches.length; // เครื่อง dev: โชว์ตัวอย่างเตือนรวม (ไม่เขียนชีต)
+  const cands = batches.length || demo ? await reminderCandidates(now) : [];
+  const verified = batches.length || demo ? await verifiedMembers() : [];
+  const allSids = verified.map((m) => digits(m.matched_student_id)).filter(Boolean);
+  const entry = (c: DigestItem): BatchEntry => ({
+    key: c.key, kind: c.kind, title: c.title, when: c.at ? `${relativeTh(c.at, now)} · ${thDateTime(c.at)}` : "", forAll: c.forAll,
+    ids: c.forAll ? [] : Array.from(c.undone ?? []), links: c.links.map((l) => l.label),
+  });
+  const batchProps = await Promise.all(batches.map(async (o) => {
+    const keys = await normalizeKeys(batchKeys(o) ?? []);
+    const inB = cands.filter((c) => keys.includes(c.key)).sort((a, b) => keys.indexOf(a.key) - keys.indexOf(b.key));
+    return { id: o.id, code: o.code, entries: inB.map(entry), extra: cands.filter((c) => !keys.includes(c.key)).map(entry) };
+  }));
+  if (demo && cands.length) {
+    const inB = cands.filter((c) => c.suggested || c.kind !== "news").slice(0, 4);
+    batchProps.push({ id: "demo", code: "000", entries: inB.map(entry), extra: cands.filter((c) => !inB.includes(c)).map(entry) });
+  }
+  const nickMap = Object.fromEntries(roster.map((r) => [r.student_id, r.nickname || r.full_name]));
+  const items = await Promise.all(others.map(async (o) => {
     let links: { label: string; url: string }[] = [];
     let personal = false;
     try {
@@ -49,12 +74,15 @@ export default async function InboxPage() {
 
       <div className="card flat row" style={{ gap: 14, marginBottom: 18 }}>
         <Sq icon={MessageCircle} tone="line" size="lg" />
-        <div style={{ flex: 1, minWidth: 220 }}><b>อนุมัติจาก LINE ได้เลย</b><div className="hint">ทุกรายการใหม่ บอทส่งการ์ดให้คุณในแชต — กดปุ่ม หรือพิมพ์ <b>approve 123</b> · <b>approve all</b> · <b>reject 123</b><br />เตือนเดดไลน์อัตโนมัติรวมเป็น <b>“สรุปเตือนวันนี้” ฉบับเดียว</b> ทุกเช้า 08:00 — แต่ละคนเห็นเฉพาะเรื่องที่ยังไม่ได้ทำ</div></div>
-        <ActButton action="outbox.digestNow" className="btn-sm" doneText="ร่างแล้ว #{code} · {items} เรื่อง · {people} คน — รีเฟรชหน้าเพื่อดู">ร่างสรุปเตือนตอนนี้</ActButton>
+        <div style={{ flex: 1, minWidth: 220 }}><b>เตือนทุกเรื่องในข้อความเดียว</b><div className="hint">ทุกเช้า 08:00 บอทส่ง <b>ข้อความเดียว</b> สรุปทุกเรื่องที่ใกล้ถึงให้คุณใน LINE — กด <b>ส่งทุกเรื่องเลย</b> · พิมพ์ <b>approve 123 1 3</b> (เฉพาะข้อ) · หรือมาติ๊กเลือกที่นี่<br />เพื่อนแต่ละคนได้ข้อความเดียว มีเฉพาะเรื่องที่ตัวเองยังไม่ทำ · ปุ่ม “เตือน” ในหน้าประกาศ/สิ่งที่ต้องกรอก จะเพิ่มเข้ารายการนี้</div></div>
+        <ActButton action="outbox.digestNow" className="btn-sm" doneText="รวบรวมแล้ว #{code} · {items} เรื่อง · {people} คน — รีเฟรชหน้าเพื่อดู">รวบรวมเรื่องที่ใกล้ถึงตอนนี้</ActButton>
       </div>
 
-      {items.length === 0 ? <div className="card"><Empty icon={CheckCircle2} title="ไม่มีข้อความรออนุมัติ" sub="ระบบจะร่างเตือนเดดไลน์ให้เองก่อน 3 วัน · 1 วัน · เช้าวันจริง" /></div>
-        : <div className="stack">{items.map((it) => <OutboxCard key={it.id} it={it} />)}</div>}
+      {items.length === 0 && batchProps.length === 0 ? <div className="card"><Empty icon={CheckCircle2} title="ไม่มีข้อความรออนุมัติ" sub="ทุกเช้า 08:00 ระบบรวมเรื่องที่ใกล้ถึงเป็น “เตือนรวม” ให้คุณกดส่งครั้งเดียว" /></div>
+        : <div className="stack">
+            {batchProps.map((b) => <BatchCard key={b.id} {...b} all={allSids} nick={nickMap} />)}
+            {items.map((it) => <OutboxCard key={it.id} it={it} />)}
+          </div>}
 
       {claims.length > 0 && (
         <>
@@ -110,7 +138,7 @@ export default async function InboxPage() {
               return (
                 <div key={o.id} className="li">
                   {sent ? <CheckCircle2 color="#34c759" /> : expired ? <Clock color="#8e8e93" /> : <XCircle color="#ff3b30" />}
-                  <div className="li-b"><b>{o.title}</b><small>#{o.code} · {expired ? "หมดเวลา" : sent ? "ส่งแล้ว" : o.status === "rejected" ? "ไม่ส่ง" : o.status} · {thDateTime(o.sent_at || o.decided_at || o.created_at)} · {o.result}</small></div>
+                  <div className="li-b"><b>{o.title}</b><small>#{o.code} · {expired ? "หมดเวลา" : sent ? "ส่งแล้ว" : o.status === "rejected" ? "ไม่ส่ง" : o.status === "merged" ? "รวมเข้าเตือนรวม" : o.status === "expired" ? "หมดเวลา" : o.status} · {thDateTime(o.sent_at || o.decided_at || o.created_at)} · {o.result}</small></div>
                 </div>
               );
             })}

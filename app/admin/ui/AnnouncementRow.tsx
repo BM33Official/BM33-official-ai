@@ -19,9 +19,8 @@ export default function AnnouncementRow({ a, meta, forms, committee }: {
     await act("announce.update", { id: a.id, patch: { status } });
   }
   async function remind() {
-    if (!confirm("ร่างข้อความ LINE เข้ากล่องรออนุมัติ (และทักคุณใน LINE)?")) return;
     const r = await act("announce.remind", { id: a.id });
-    setMsg(r.ok ? `รออนุมัติ #${r.code}` : `ไม่สำเร็จ: ${r.error}`);
+    setMsg(r.ok ? `เพิ่มเข้า “เตือนรวม” #${r.code} แล้ว (${r.n} เรื่อง) → ไปกดส่งที่ รออนุมัติ` : `ไม่สำเร็จ: ${r.error}`);
   }
   const color = CAT_COLOR[a.category] ?? "#007aff";
   const S = SRC[meta.source] ?? SRC.manual;

@@ -64,10 +64,11 @@ export async function tryRules(q0: string, asker: Asker): Promise<AnswerOut | nu
     const { rows } = await ranking();
     const r = rows.find((x) => x.student_id === asker.studentId);
     if (r) {
+      const fee = r.feeMisses ? `\n💸 เงินรุ่นที่เลยกำหนด: ${r.feeMonths.join(", ")} (จ่ายแล้วส่งสลิปในแอปได้เลย)` : "";
       const msg = r.level === "red"
-        ? `${nick}ตอนนี้อยู่ใน Red Zone นะ 📕 ยังไม่ได้จำข้อสอบ ${r.misses} ครั้ง${r.missedExams.length ? `\n\n${r.missedExams.map((n) => `• ${n}`).join("\n")}` : ""}\n\nค่อย ๆ ทยอยจำ เดี๋ยวก็หลุดโซน สู้ ๆ 💪`
-        : r.misses === 0 ? `${nick}ปลอดภัย ไม่อยู่ใน Red Zone เลย ✅ จำข้อสอบครบทุกครั้ง เก่งมาก 🌟`
-        : `${nick}ยังไม่อยู่ใน Red Zone นะ 🟡 (ยังไม่ได้จำ ${r.misses} ครั้ง) อีกประมาณ ${r.distanceToRed} ครั้งจะถึงโซน ระวังนิดนึงน้า`;
+        ? `${nick}ตอนนี้อยู่ใน Red Zone นะ 📕${r.misses ? ` ยังไม่ได้จำข้อสอบ ${r.misses} ครั้ง` : ""}${r.missedExams.length ? `\n\n${r.missedExams.map((n) => `• ${n}`).join("\n")}` : ""}${fee}\n\nค่อย ๆ ทยอยเคลียร์ เดี๋ยวก็หลุดโซน สู้ ๆ 💪`
+        : r.misses === 0 && r.feeMisses === 0 ? `${nick}ปลอดภัย ไม่อยู่ใน Red Zone เลย ✅ จำข้อสอบครบ เงินรุ่นก็ไม่ค้าง เก่งมาก 🌟`
+        : `${nick}ยังไม่อยู่ใน Red Zone นะ 🟡${r.misses ? ` (ยังไม่ได้จำ ${r.misses} ครั้ง)` : ""}${fee}\nอีกประมาณ ${r.distanceToRed} ครั้งจะถึงโซน ระวังนิดนึงน้า`;
       return { ...ans(msg, "วิชาการ"), personal: true };
     }
   }

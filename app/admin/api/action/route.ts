@@ -22,7 +22,7 @@ import {
 import { generateDaily, updateDaily } from "@/lib/bc/daily";
 import { saveScheduleRows, saveUniExamRows, publishUpload, readSchedule } from "@/lib/bc/schedule";
 import { approveAndSend, rejectOutbox, updateOutboxText, reminderMessages } from "@/lib/bc/outbox";
-import { queueAnnouncementReminder } from "@/lib/bc/reminders";
+import { addReminder } from "@/lib/bc/reminders";
 import {
   upsertMonth, deleteMonth, applyPayments, markYearly, inspectFinanceSheet, importFinanceSheet, queueUnpaidReminder, PayChange,
 } from "@/lib/bc/fees";
@@ -92,9 +92,8 @@ export async function POST(req: Request) {
       case "form.remind": {
         const f = await getForm(String(body.id));
         if (!f) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-        const { queueFormReminder } = await import("@/lib/bc/reminders");
-        const it = await queueFormReminder(f, `manual-${Date.now()}`);
-        return j({ code: it?.code ?? "" });
+        // เข้า "เตือนรวม" รายการเดียว — ไปกดส่งที่ รออนุมัติ
+        return j({ ...(await addReminder(`form:${f.form_id}`)) });
       }
 
       // ── บรอดแคสต์ (เดิม) ────────────────────────────────────────────────────
@@ -202,10 +201,7 @@ export async function POST(req: Request) {
         const id = await createAnnouncement({ ...(body.data as Partial<Announcement>), source: "manual" }, { autoForm: body.todo === true });
         let code = "";
         // ติ๊ก "ส่ง LINE ด้วย" -> เข้ากล่องรออนุมัติ (ยังไม่ส่งจนกว่าจะกดอนุมัติ)
-        if (body.sendLine === true) {
-          const a = await getAnnouncement(id, true);
-          if (a) code = (await queueAnnouncementReminder(a, "manual", { notify: true }))?.code ?? "";
-        }
+        if (body.sendLine === true) code = (await addReminder(`ann:${id}`)).code;
         return j({ id, code });
       }
       case "announce.update":
@@ -213,8 +209,7 @@ export async function POST(req: Request) {
       case "announce.remind": {
         const a = await getAnnouncement(String(body.id), true);
         if (!a) return NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-        const item = await queueAnnouncementReminder(a, "manual", { notify: body.notify !== false });
-        return j({ code: item?.code ?? "" });
+        return j({ ...(await addReminder(`ann:${a.id}`)) });
       }
 
       // ── สรุปวันนี้ ─────────────────────────────────────────────────────────
@@ -237,13 +232,22 @@ export async function POST(req: Request) {
 
       // ── กล่องรอตรวจ (ข้อความขาออก) ─────────────────────────────────────────
       case "outbox.approve": {
-        const r = await approveAndSend(String(body.id ?? ""), `web:${by}`);
+        const keys = Array.isArray(body.keys) ? (body.keys as unknown[]).map(String) : undefined;
+        if (keys && !keys.length) return NextResponse.json({ ok: false, error: "ยังไม่ได้เลือกเรื่อง" });
+        const r = await approveAndSend(String(body.id ?? ""), `web:${by}`, { keys });
         return NextResponse.json({ ok: r.ok, count: r.count, error: r.error });
       }
       case "outbox.digestNow": {
-        const { queueDailyDigest } = await import("@/lib/bc/digest");
-        const r = await queueDailyDigest(Date.now(), { force: true });
-        return j({ code: r.item?.code ?? "", people: r.people, items: r.items });
+        // รวบรวมเรื่องที่ใกล้ถึงเข้า "เตือนรวม" ตอนนี้ (ไม่ส่ง LINE หาแอดมิน — อยู่ในหน้านี้แล้ว)
+        const { addToBatch, reminderCandidates } = await import("@/lib/bc/digest");
+        const sug = (await reminderCandidates()).filter((c) => c.suggested && (c.forAll || (c.undone?.size ?? 0) > 0)).map((c) => c.key);
+        const r = await addToBatch(sug, { notify: false });
+        return j({ code: r?.item.code ?? "", items: r?.keys.length ?? 0, people: r?.people ?? 0 });
+      }
+      case "outbox.batchAdd": {
+        const { addToBatch } = await import("@/lib/bc/digest");
+        const r = await addToBatch([String(body.key ?? "")], { notify: false });
+        return j({ code: r?.item.code ?? "", items: r?.keys.length ?? 0 });
       }
       case "outbox.reject":
         return NextResponse.json({ ok: await rejectOutbox(String(body.id ?? ""), `web:${by}`) });
@@ -273,7 +277,7 @@ export async function POST(req: Request) {
         })) });
       case "finance.setting": {
         const key = String(body.key) as ConfigKey;
-        if (!["payment_info", "payment_link", "finance_sheet_link", "payment_account_name", "payment_account_no", "slip_auto_approve"].includes(key)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+        if (!["payment_info", "payment_link", "finance_sheet_link", "payment_account_name", "payment_account_no", "slip_auto_approve", "red_zone_fees", "red_zone_fee_weight"].includes(key)) return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
         await setConfig(key, String(body.value ?? ""));
         return j({});
       }

@@ -23,7 +23,8 @@ const digits = (s: string) => String(s ?? "").replace(/\D/g, "");
 const LEVEL_TH = { red: "Red Zone", close: "ใกล้ Red Zone", watch: "เฝ้าระวัง", safe: "ปลอดภัย" } as const;
 
 export default async function Academic({ searchParams }: { searchParams: { exam?: string } }) {
-  await requireRole("academic");
+  const role = await requireRole("academic");
+  // ฝ่ายวิชาการเห็นแค่ว่า "มีเงินรุ่นค้าง" (ไม่เห็นเดือน/ยอด) — รายละเอียดอยู่หน้าการเงิน
   const [exams, rank, roster, draws] = await Promise.all([readExams(), ranking(), readRoster(), readDraws(true)]);
   const byNew = [...exams].sort((a, b) => (b.exam_date || b.created_at || "").localeCompare(a.exam_date || a.created_at || ""));
   const selected = searchParams?.exam ? exams.find((e) => e.exam_id === searchParams.exam) : byNew[0];
@@ -37,6 +38,7 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
     status: d.status, phase: drawPhase(d), show: thDateTime(d.show_at), reveal: thDateTime(d.reveal_at), notified: d.notified,
   }));
   const people = rank.rows.map((r) => ({ sid: r.student_id, nickname: r.nickname, level: r.level, misses: r.misses }));
+  const hasAny = (r: (typeof rank.rows)[number]) => r.misses > 0 || r.feeMisses > 0;
   const rows = roster.map((r) => ({ student_id: digits(r.student_id), nickname: r.nickname || r.full_name || digits(r.student_id), name: r.full_name || "" }));
   const initial = selected ? String(selected.not_memorized_ids ?? "").split(",").map(digits).filter(Boolean) : [];
   const initialDoc = selected ? String(selected.not_filled_ids ?? "").split(",").map(digits).filter(Boolean) : [];
@@ -61,7 +63,7 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
           {students.map((s) => {
             const r = levelOf.get(s.sid);
             const lv = r?.level ?? "safe";
-            return <span key={s.sid} className={`d ${lv === "safe" ? "none" : lv}`} title={`${s.nickname} · ${LEVEL_TH[lv]}${r?.misses ? ` · พลาด ${r.misses} ครั้ง` : ""}`}>{s.no}</span>;
+            return <span key={s.sid} className={`d ${lv === "safe" ? "none" : lv}`} title={`${s.nickname} · ${LEVEL_TH[lv]}${r?.misses ? ` · พลาด ${r.misses} ครั้ง` : ""}${r?.feeMisses ? " · เงินรุ่นค้าง" : ""}`}>{s.no}</span>;
           })}
         </div>
         <div className="legend" style={{ marginTop: 12 }}>
@@ -102,13 +104,13 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
         <div style={{ marginTop: 10 }}><DrawPanel people={people} draws={drawRows} /></div>
       </details>
       <details className="more">
-        <summary><ListOrdered size={16} /> อันดับเต็ม (คะแนนสะสม — ข้อสอบล่าสุดมีน้ำหนักมากกว่า)</summary>
-        {rank.rows.some((r) => r.misses > 0) ? (
+        <summary><ListOrdered size={16} /> อันดับเต็ม (คะแนนสะสม — ข้อสอบล่าสุดมีน้ำหนักมากกว่า{rank.fees.on ? ` · เงินรุ่นเลยกำหนด เดือนละ ${rank.fees.weight}` : ""})</summary>
+        {rank.rows.some(hasAny) ? (
           <div className="list" style={{ marginTop: 10 }}>
-            {rank.rows.filter((r) => r.misses > 0).map((r, i) => (
+            {rank.rows.filter(hasAny).map((r, i) => (
               <div key={r.student_id} className="li">
                 <span className={`ic ${r.level === "red" ? "c-red" : r.level === "close" ? "c-orange" : "c-yellow"}`} style={{ fontWeight: 800, fontSize: 13 }}>{i + 1}</span>
-                <div className="li-b"><b>{r.nickname} <span className="hint">#{Number(r.student_id.slice(-3))}</span>{!r.lineUserId && <span className="badge" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</b><small>พลาด {r.misses} ครั้ง · คะแนน {r.score} · {r.missedExams.join(", ")}</small></div>
+                <div className="li-b"><b>{r.nickname} <span className="hint">#{Number(r.student_id.slice(-3))}</span>{!r.lineUserId && <span className="badge" style={{ marginLeft: 6 }}>ยังไม่ลงทะเบียน</span>}</b><small>{r.misses > 0 ? `พลาด ${r.misses} ครั้ง · ` : ""}{r.feeMisses > 0 ? `💸 เงินรุ่นค้าง${role === "admin" ? ` ${r.feeMonths.join(", ")}` : ""} · ` : ""}คะแนน {r.score}{r.missedExams.length ? ` · ${r.missedExams.join(", ")}` : ""}</small></div>
                 <span className={`badge ${r.level === "red" ? "b-red" : r.level === "close" ? "b-orange" : ""}`}>{LEVEL_TH[r.level]}</span>
               </div>
             ))}

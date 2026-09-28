@@ -58,7 +58,7 @@ export default function AnnouncementEditor({ initial, forms, committee, onDone }
     const r = d.id ? await act("announce.update", { id: d.id, patch: payload }) : await act("announce.create", { data: payload, todo: todo && hasForm, sendLine: status === "live" && sendLine });
     setBusy(false);
     if (!r.ok) { setMsg(`บันทึกไม่ได้: ${r.error}`); return; }
-    setMsg(status === "live" ? `ขึ้นแอปแล้ว ✓${r.code ? ` · ข้อความ LINE รออนุมัติ #${r.code}` : ""}` : "บันทึกแล้ว");
+    setMsg(status === "live" ? `ขึ้นแอปแล้ว ✓${r.code ? ` · เพิ่มเข้า “เตือนรวม” #${r.code} (รออนุมัติ)` : ""}` : "บันทึกแล้ว");
     if (onDone) setTimeout(onDone, 600); else setTimeout(() => window.location.reload(), 900);
   }
 
@@ -83,8 +83,8 @@ export default function AnnouncementEditor({ initial, forms, committee, onDone }
       </div>
       {sendLine && !d.id && (
         <>
-          <div className="label" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}><MessageCircle size={14} /> ข้อความ LINE (รออนุมัติก่อนส่ง)</div>
-          <div className="phone line"><div className="bubble">📢 ประกาศจากรุ่น{"\n"}{d.title}{"\n\n"}{d.summary}{d.deadline_at ? `\n\n📅 ปิด ${fmt(d.deadline_at)}` : ""}</div></div>
+          <div className="label" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 14 }}><MessageCircle size={14} /> อยู่ใน “เตือนรวม” (รออนุมัติก่อนส่ง)</div>
+          <div className="phone line"><div className="bubble">{d.deadline_at ? "⏰" : "📢"} {d.title}{d.deadline_at ? `\n${fmt(d.deadline_at)}` : ""}{"\n\n"}+ เรื่องอื่นที่เพื่อนคนนั้นยังไม่ทำ รวมเป็นข้อความเดียว</div></div>
         </>
       )}
     </div>
@@ -152,7 +152,7 @@ export default function AnnouncementEditor({ initial, forms, committee, onDone }
 
         <div className="list" style={{ marginTop: 18, boxShadow: "none", background: "var(--fill)" }}>
           <div className="li"><span className="ic c-blue"><Smartphone strokeWidth={2.4} /></span><div className="li-b"><b>ขึ้นแอป BM33</b><small>ทุกคนเห็นในหน้าแรก</small></div><label className="switch"><input type="checkbox" checked readOnly /><span /></label></div>
-          {!d.id && <div className="li"><span className="ic c-line"><MessageCircle strokeWidth={2.4} /></span><div className="li-b"><b>ส่งข้อความ LINE ด้วย</b><small>{d.form_id || (todo && hasForm) ? "ส่งเฉพาะคนที่ยังไม่กรอก" : "ส่งถึงทุกคน"} · รอคุณอนุมัติก่อน</small></div><label className="switch"><input type="checkbox" checked={sendLine} onChange={(e) => setSendLine(e.target.checked)} /><span /></label></div>}
+          {!d.id && <div className="li"><span className="ic c-line"><MessageCircle strokeWidth={2.4} /></span><div className="li-b"><b>ส่งข้อความ LINE ด้วย</b><small>{d.form_id || (todo && hasForm) ? "เฉพาะคนที่ยังไม่กรอก" : "ทุกคน"} · รวมใน “เตือนรวม” ข้อความเดียว รอคุณกดส่ง</small></div><label className="switch"><input type="checkbox" checked={sendLine} onChange={(e) => setSendLine(e.target.checked)} /><span /></label></div>}
           {!d.id && hasForm && <div className="li"><span className="ic c-green"><ClipboardCheck strokeWidth={2.4} /></span><div className="li-b"><b>นับเป็น “สิ่งที่ต้องกรอก”</b><small>ทุกคนต้องกรอก · ติดตามว่าใครยังไม่กรอก</small></div><label className="switch"><input type="checkbox" checked={todo} onChange={(e) => setTodo(e.target.checked)} /><span /></label></div>}
           <div className="li"><span className="ic c-orange"><Pin strokeWidth={2.4} /></span><div className="li-b"><b>ปักหมุดไว้บนสุด</b></div><label className="switch"><input type="checkbox" checked={d.pinned} onChange={(e) => set({ pinned: e.target.checked })} /><span /></label></div>
         </div>

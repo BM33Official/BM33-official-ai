@@ -4,7 +4,7 @@
 import { createHash } from "crypto";
 import { cached } from "@/lib/cache";
 import { liveAnnouncements, parseLinks } from "@/lib/bc/announcements";
-import { readForms } from "@/lib/bc/forms";
+import { readForms, formVisible, formEndedAt, announcementVisible } from "@/lib/bc/forms";
 import { liveSchedule, liveUniExams, examStart } from "@/lib/bc/schedule";
 import { currentDaily, parseItems } from "@/lib/bc/daily";
 import { readCommittee } from "@/lib/bc/committee";
@@ -17,11 +17,13 @@ import { drawsForStudent, readDraws, drawPhase, drawIds } from "@/lib/bc/draws";
 import { getFortune, fortuneBoard } from "@/lib/bc/fortune";
 import { dayDiff, bkkDayKey } from "@/lib/time";
 import { fixtureEnabled, applyFixture } from "@/lib/app/fixture";
+import { signCal } from "@/lib/app/session";
 
 export interface BoardAnnouncement {
   id: string; title: string; summary: string; body: string; author: string; author_role: string;
   category: string; deadline_at: string; event_at: string; location: string;
   links: { label: string; url: string }[]; pinned: boolean; created_at: string; updated_at: string; form_id: string;
+  cal: string; // ลายเซ็นลิงก์ไฟล์ปฏิทิน /api/cal/<id>?s=<cal> ("" = ไม่มีวันเวลา)
 }
 
 async function buildBoard() {
@@ -29,10 +31,12 @@ async function buildBoard() {
   const [ann, forms, sched, exams, daily, committee, cfg, draws, rosterRows] = await Promise.all([
     liveAnnouncements(), readForms(), liveSchedule(), liveUniExams(), currentDaily(), readCommittee(), getConfig(), readDraws(), readRoster(),
   ]);
-  const announcements: BoardAnnouncement[] = ann.map((a) => ({
+  // ปิดแล้ว/เลยเดดไลน์ -> โชว์ต่ออีก 1 วัน แล้วซ่อน (ประกาศไม่รก)
+  const announcements: BoardAnnouncement[] = ann.filter((a) => announcementVisible(a, forms, now)).map((a) => ({
     id: a.id, title: a.title, summary: a.summary, body: a.body, author: a.author, author_role: a.author_role,
     category: a.category, deadline_at: a.deadline_at, event_at: a.event_at, location: a.location,
     links: parseLinks(a.links), pinned: a.pinned === "1", created_at: a.created_at, updated_at: a.updated_at, form_id: a.form_id,
+    cal: a.event_at || a.deadline_at ? signCal(a.id) : "",
   }));
   // ตาราง: 14 วันที่แล้ว ถึง 120 วันข้างหน้า (พอสำหรับปฏิทินรายเดือน)
   const schedule = sched
@@ -46,7 +50,7 @@ async function buildBoard() {
     .filter((d) => { const show = new Date(d.show_at).getTime(); const rev = new Date(d.reveal_at).getTime(); return now > show - 30 * 60_000 && now < rev + 3 * 86_400_000; });
   return {
     announcements,
-    forms: forms.filter((f) => f.status !== "closed").map((f) => ({ id: f.form_id, name: f.name, deadline_at: f.deadline_at ?? "", link: f.link ?? "", description: f.description ?? "", type: f.type })),
+    forms: forms.filter((f) => formVisible(f, now)).map((f) => ({ id: f.form_id, name: f.name, deadline_at: f.deadline_at ?? "", link: f.link ?? "", description: f.description ?? "", type: f.type, closed: formEndedAt(f, now) !== null })),
     schedule,
     exams: uniExams,
     daily: daily ? { id: daily.id, date: daily.date, headline: daily.headline, items: parseItems(daily.items), updated_at: daily.updated_at } : null,
@@ -64,10 +68,10 @@ export async function publicBoard() {
 }
 
 const ZONE_COPY: Record<string, { title: string; text: string }> = {
-  safe: { title: "ปลอดภัย", text: "จำข้อสอบครบ ไม่มีค้างเลย เก่งมาก ✨" },
-  watch: { title: "เฝ้าระวังนิดนึง", text: "มีบางข้อที่ยังไม่ได้จำ ทยอยเก็บให้ครบนะ" },
-  close: { title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ข้อที่ค้างก่อนสอบครั้งหน้านะ" },
-  red: { title: "อยู่ใน Red Zone", text: "ตอนนี้อยู่ในกลุ่มที่ต้องเร่งจำ ค่อย ๆ เก็บทีละข้อ เดี๋ยวก็หลุดโซน 💪" },
+  safe: { title: "ปลอดภัย", text: "จำข้อสอบครบ เงินรุ่นก็ไม่ค้าง เก่งมาก ✨" },
+  watch: { title: "เฝ้าระวังนิดนึง", text: "มีบางอย่างที่ยังค้างอยู่ ทยอยเคลียร์ให้ครบนะ" },
+  close: { title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ที่ค้างก่อนสอบครั้งหน้านะ" },
+  red: { title: "อยู่ใน Red Zone", text: "ตอนนี้อยู่ในกลุ่มที่ต้องเร่งเคลียร์ ค่อย ๆ เก็บทีละอย่าง เดี๋ยวก็หลุดโซน 💪" },
 };
 
 export async function personalState(sid: string) {
@@ -85,11 +89,13 @@ export async function personalState(sid: string) {
       nameEn: me?.name_en ?? "", number: Number(sid.slice(-3)), role,
     },
     fees,
-    forms: forms.map((f) => ({ id: f.form.form_id, state: f.state })),
+    forms: forms.map((f) => ({ id: f.form.form_id, state: f.state, undo: f.undo })),
     zone: {
       level,
       misses: r?.misses ?? 0,
       missedExams: r?.missedExams ?? [],
+      feeMisses: r?.feeMisses ?? 0,
+      feeMonths: r?.feeMonths ?? [],
       // สเกล 0-1 สำหรับเกจ (เทียบกับเส้น red zone — ไม่บอกอันดับหรือชื่อใคร)
       gauge: rank.threshold > 0 && r ? Math.min(1, r.score / rank.threshold) : 0,
       ...ZONE_COPY[level],

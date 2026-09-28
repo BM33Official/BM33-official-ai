@@ -4,7 +4,7 @@ import { deleteRow } from "@/lib/google-sheets";
 import { TABS, Exam } from "@/lib/bc/types";
 import { verifiedMembers } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
-import { redZoneSize } from "@/lib/bc/config";
+import { redZoneSize, getConfig } from "@/lib/bc/config";
 import { pushTo } from "@/lib/line";
 import { bust } from "@/lib/cache";
 
@@ -79,9 +79,11 @@ export interface RankRow {
   student_id: string;
   nickname: string;
   lineUserId: string; // "" = ยังไม่ได้ลงทะเบียน (ส่งข้อความไม่ได้)
-  misses: number;
+  misses: number; // ไม่ได้จำข้อสอบ (ครั้ง)
   missedExams: string[];
-  score: number; // คะแนนสะสม (ข้อสอบล่าสุดมีน้ำหนักมากกว่า)
+  feeMisses: number; // เงินรุ่นเลยกำหนดแล้วยังไม่จ่าย (เดือน)
+  feeMonths: string[];
+  score: number; // คะแนนสะสม = ข้อสอบ (ล่าสุดมีน้ำหนักมากกว่า) + เงินรุ่นค้าง
   level: ZoneLevel;
   redzone: boolean;
   distanceToRed: number;
@@ -97,8 +99,29 @@ function examOrder(exams: Exam[]): Exam[] {
 
 // จัดอันดับจากทะเบียนทั้งรุ่น (ไม่ใช่แค่คนที่ลงทะเบียน) เพื่อให้ red zone ถูกต้อง
 // red zone = N อันดับแรกของคะแนนสะสม (N จาก BC_config.red_zone_size)
-export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number }> {
-  const [roster, members, exams, size] = await Promise.all([readRoster(), verifiedMembers(), readExams(), redZoneSize()]);
+// เงินรุ่นที่ "เลยกำหนดแล้วยังไม่จ่าย" ของทุกคน (student id -> ป้ายเดือน) — ใช้ร่วมกับ red zone
+export async function overdueFees(now = Date.now()): Promise<Map<string, string[]>> {
+  const { readFeeMonths, readPayments, stateFor, monthLabel } = await import("@/lib/bc/fees");
+  const [months, payments] = await Promise.all([readFeeMonths(), readPayments()]);
+  const pay = new Map(payments.map((p) => [`${digits(p.student_id)}|${p.month}`, p]));
+  const out = new Map<string, string[]>();
+  const roster = await readRoster();
+  for (const r of roster) {
+    const sid = digits(r.student_id);
+    const list = months.filter((m) => stateFor(m, pay.get(`${sid}|${m.month}`), now) === "overdue").map((m) => m.label || monthLabel(m.month));
+    if (list.length) out.set(sid, list);
+  }
+  return out;
+}
+
+export async function redZoneFeeRule(): Promise<{ on: boolean; weight: number }> {
+  const cfg = await getConfig();
+  const w = Number(cfg.red_zone_fee_weight);
+  return { on: (cfg.red_zone_fees ?? "").trim() !== "0", weight: Number.isFinite(w) && w > 0 ? w : 1 };
+}
+
+export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number; fees: { on: boolean; weight: number } }> {
+  const [roster, members, exams, size, fees, rule] = await Promise.all([readRoster(), verifiedMembers(), readExams(), redZoneSize(), overdueFees().catch(() => new Map<string, string[]>()), redZoneFeeRule()]);
   const lineById = new Map(members.map((m) => [digits(m.matched_student_id), m.line_user_id]));
   const ordered = examOrder(exams);
   const weight = new Map(ordered.map((e, i) => [e.exam_id, Math.max(0.35, RECENCY_DECAY ** i)]));
@@ -106,20 +129,23 @@ export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; 
   const base = roster.map((r) => {
     const sid = digits(r.student_id);
     const missed = ordered.filter((e) => idList(e.not_memorized_ids).includes(sid));
-    const score = Math.round(missed.reduce((a, e) => a + (weight.get(e.exam_id) ?? 1), 0) * 100) / 100;
+    // red zone = ไม่ได้จำข้อสอบ + เงินรุ่นเลยกำหนด (ฝ่ายการเงินปิดได้ / ปรับน้ำหนักได้)
+    const feeMonths = rule.on ? fees.get(sid) ?? [] : [];
+    const score = Math.round((missed.reduce((a, e) => a + (weight.get(e.exam_id) ?? 1), 0) + feeMonths.length * rule.weight) * 100) / 100;
     return {
       student_id: sid, nickname: r.nickname || r.full_name || sid, lineUserId: lineById.get(sid) || "",
-      misses: missed.length, missedExams: missed.map((e) => e.name), score,
+      misses: missed.length, missedExams: missed.map((e) => e.name), feeMisses: feeMonths.length, feeMonths, score,
     };
   });
 
-  const sorted = [...base].sort((a, b) => b.score - a.score || b.misses - a.misses);
+  const sorted = [...base].sort((a, b) => b.score - a.score || (b.misses + b.feeMisses) - (a.misses + a.feeMisses));
   const withMiss = sorted.filter((r) => r.score > 0);
   const red = withMiss.slice(0, size);
   // เสมอกันที่เส้นตัด -> รวมเข้า red zone ทั้งหมด (ยุติธรรม ไม่ตัดตามลำดับตัวอักษร)
   const threshold = red.at(-1)?.score ?? 0;
   const redSet = new Set(threshold > 0 ? withMiss.filter((r) => r.score >= threshold).map((r) => r.student_id) : []);
-  const redzoneMin = red.length >= size ? red[red.length - 1].misses : (red.at(-1)?.misses ?? 1);
+  const strikes = (r: { misses: number; feeMisses: number }) => r.misses + r.feeMisses;
+  const redzoneMin = red.length >= size ? strikes(red[red.length - 1]) : (red.at(-1) ? strikes(red.at(-1)!) : 1);
 
   const rows: RankRow[] = sorted.map((r, i) => {
     const inRed = redSet.has(r.student_id);
@@ -131,10 +157,10 @@ export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; 
       ...r,
       level,
       redzone: inRed,
-      distanceToRed: inRed ? 0 : Math.max(1, redzoneMin - r.misses + 1),
+      distanceToRed: inRed ? 0 : Math.max(1, redzoneMin - strikes(r) + 1),
     };
   });
-  return { rows, redzoneMin, size, threshold };
+  return { rows, redzoneMin, size, threshold, fees: rule };
 }
 
 export type AcademicMode = "unmemorized" | "redzone" | "rest" | "doc" | "doc_unfilled";
@@ -146,7 +172,7 @@ export interface AcademicOpts { template?: string; link?: string }
 // ข้อความเริ่มต้นแบบแก้ได้ (มี token) — frontend ใช้ค่าเดียวกันเป็นค่าเริ่มต้นในช่องแก้ไข
 export const DEFAULT_TEMPLATES: Record<AcademicMode, string> = {
   unmemorized: `{ชื่อเล่น} จ๋า 📝\n\nมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง:\n{ข้อสอบ}\n\nหาเวลาทยอยจำนะ สู้ ๆ 😊`,
-  redzone: `{ชื่อเล่น} จ๋า 📕\n\nตอนนี้เธออยู่ใน red zone แล้วน้า (จำข้อสอบได้น้อยสุด {จำนวนโซน} อันดับของรุ่น) รวม {จำนวน} ครั้ง\nข้อสอบที่ยังไม่ได้จำ: {ข้อสอบ}\n\nค่อย ๆ ทยอยจำนะ เดี๋ยวก็หลุดโซนแล้ว สู้ ๆ 💪`,
+  redzone: `{ชื่อเล่น} จ๋า 📕\n\nตอนนี้เธออยู่ใน red zone แล้วน้า (นับจากข้อสอบที่ยังไม่ได้จำ + เงินรุ่นที่เลยกำหนด · {จำนวนโซน} อันดับท้ายของรุ่น)\n{ข้อสอบ}{เงินรุ่น}\n\nค่อย ๆ ทยอยเคลียร์นะ เดี๋ยวก็หลุดโซนแล้ว สู้ ๆ 💪`,
   rest: `{ชื่อเล่น} จ๋า 📖\n\nยังมีข้อสอบที่ยังไม่ได้จำอยู่ {จำนวน} ครั้ง ({ข้อสอบ})\nอีกแค่ {ระยะห่าง} ครั้งจะเข้า red zone แล้วน้า\n\nเร่งจำอีกนิดนะ เป็นกำลังใจให้ 🔥`,
   doc: `ฝากกรอกเอกสารแบ่งข้อรับผิดชอบด้วยน้า 📄\n\n"{ชื่อเอกสาร}"\n\nใครกรอกครบแล้วข้ามได้เลยน้า ขอบคุณมาก ๆ 🙏`,
   doc_unfilled: `แอบมาสะกิดนิดนึงน้า 📄\n\nเหมือนยังไม่เห็นชื่อในเอกสารแบ่งข้อเลย\n"{ชื่อเอกสาร}"\n\nรบกวนช่วยไปกรอกด้วยน้า จะได้ครบทั้งรุ่น ขอบคุณมาก ๆ 🙏`,
@@ -158,6 +184,7 @@ function fillTokens(tpl: string, r: RankRow, size = RED_ZONE_SIZE): string {
     .replace(/\{ชื่อเล่น\}/g, r.nickname)
     .replace(/\{จำนวน\}/g, String(r.misses))
     .replace(/\{ข้อสอบ\}/g, r.missedExams.map((n) => `• ${n}`).join("\n"))
+    .replace(/\{เงินรุ่น\}/g, r.feeMonths?.length ? `\n💸 เงินรุ่นที่เลยกำหนด: ${r.feeMonths.join(", ")}` : "")
     .replace(/\{ระยะห่าง\}/g, String(r.distanceToRed))
     .replace(/\{จำนวนโซน\}/g, String(size));
 }

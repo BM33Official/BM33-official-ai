@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { haptic } from "./useApp";
 import type { AppData } from "./useApp";
-import { initialOf } from "./Chrome";
-import { ILock, IWallet, IChat, ICheck, ISpark } from "./icons";
-import { thDateTime, relativeTh } from "@/lib/time";
+import { initialOf, Layer } from "./Chrome";
+import type { TabKey } from "./Chrome";
+import { ILock, IWallet, IChat, ICheck, ISpark, IChevronR } from "./icons";
+import { thDateTime, relativeTh, dayDiff, thTime, bkkDayKey } from "@/lib/time";
 
 const FEE_LABEL: Record<string, string> = {
   paid: "จ่ายแล้ว", yearly: "รายปี", waived: "ยกเว้น", partial: "บางส่วน", unpaid: "ยังไม่จ่าย", overdue: "เลยกำหนด", upcoming: "ยังไม่ถึง",
@@ -28,14 +29,16 @@ async function compress(file: File): Promise<string> {
 type Api = (path: string, body?: unknown) => Promise<{ ok: boolean; error?: string; [k: string]: unknown }>;
 
 export default function Me({
-  data, picture, section, onSectionDone, api, refresh, toast,
-}: { data: AppData; picture: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void }) {
+  data, picture, section, onSectionDone, api, refresh, toast, go, openAnn,
+}: { data: AppData; picture: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void }) {
   const { mine, board } = data;
   const feesRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const [sending, setSending] = useState(false);
   const [slipMsg, setSlipMsg] = useState("");
+  const [credits, setCredits] = useState(false);
+  const taps = useRef<number[]>([]);
 
   useEffect(() => {
     if (!section) return;
@@ -89,7 +92,7 @@ export default function Me({
         </div>
         <button className="ring-it press" onClick={() => zoneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
           <Ring v={z.level === "safe" ? 1 : 1 - Math.min(1, z.gauge)} color={ZONE_COLOR[z.level]} label={z.level === "safe" ? "✓" : z.level === "red" ? "RED" : `${z.misses}`} />
-          <span>จำข้อสอบ</span>
+          <span>Red Zone</span>
         </button>
       </div>
 
@@ -133,18 +136,19 @@ export default function Me({
         </div>
       )}
 
-      {/* red zone */}
-      <div ref={zoneRef} className="sect big"><h2>การจำข้อสอบ</h2></div>
+      {/* red zone = ข้อสอบที่ยังไม่ได้จำ + เงินรุ่นที่เลยกำหนด */}
+      <div ref={zoneRef} className="sect big"><h2>Red Zone</h2></div>
       <div className="plain">
         <div className="gauge-wrap">
           <Gauge value={z.level === "safe" ? 0 : Math.max(0.12, z.gauge)} color={ZONE_COLOR[z.level]} />
           <div>
             <div className="b" style={{ fontSize: 20, color: ZONE_COLOR[z.level] }}>{z.title}</div>
             <div className="soft small" style={{ marginTop: 4, lineHeight: 1.5 }}>{z.text}</div>
-            {z.misses > 0 && <div className="tiny muted" style={{ marginTop: 8 }}>ยังไม่ได้จำ {z.misses} ครั้ง: {z.missedExams.join(", ")}</div>}
+            {z.misses > 0 && <div className="tiny muted" style={{ marginTop: 8 }}>📕 ยังไม่ได้จำ {z.misses} ครั้ง: {z.missedExams.join(", ")}</div>}
+            {z.feeMisses > 0 && <button className="zone-fee press" onClick={() => feesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>💸 เงินรุ่นเลยกำหนด: {z.feeMonths.join(", ")} <IChevronR width={13} height={13} /></button>}
           </div>
         </div>
-        <div className="tiny muted" style={{ marginTop: 12 }}>คิดจากทุกข้อสอบของเทอม (ข้อสอบล่าสุดมีน้ำหนักมากกว่า) · เห็นแค่คุณกับฝ่ายวิชาการ</div>
+        <div className="tiny muted" style={{ marginTop: 12 }}>นับจากข้อสอบที่ยังไม่ได้จำ (ครั้งล่าสุดมีน้ำหนักมากกว่า) + เงินรุ่นที่เลยกำหนดแล้วยังไม่จ่าย · เห็นแค่คุณกับกรรมการที่ดูแล</div>
       </div>
 
       {myDraws.length > 0 && (
@@ -161,6 +165,12 @@ export default function Me({
         </>
       )}
 
+      {/* สรุปสิ่งที่ต้องทำวันนี้ (เฉพาะของฉัน) */}
+      <div className="sect big"><h2>สรุปสิ่งที่ต้องทำวันนี้</h2></div>
+      <TodayTodo data={data} go={go} openAnn={openAnn}
+        onFees={() => feesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+        onZone={() => zoneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />
+
       {/* ติดต่อ */}
       <div className="sect big"><h2>ติดต่อกรรมการรุ่น</h2></div>
       <div className="list plain-list">
@@ -173,10 +183,119 @@ export default function Me({
         ))}
       </div>
 
-      <div className="tiny muted" style={{ textAlign: "center", padding: "6px 20px 0", lineHeight: 1.6 }}>
+      <div className="tiny muted me-foot" style={{ textAlign: "center", padding: "6px 20px 0", lineHeight: 1.6 }}
+        onClick={() => {
+          // ✦ แตะ 7 ครั้งติด ๆ กัน
+          const t = Date.now();
+          taps.current = [...taps.current.filter((x) => t - x < 3500), t];
+          if (taps.current.length >= 4) haptic(4);
+          if (taps.current.length >= 7) { taps.current = []; haptic(30); setCredits(true); }
+        }}>
         <ISpark width={12} height={12} /> BM33 App · ข้อมูลอัปเดตอัตโนมัติจากกรรมการรุ่น
       </div>
+      {credits && <Credits onClose={() => setCredits(false)} />}
     </div>
+  );
+}
+
+// ── สรุปสิ่งที่ต้องทำวันนี้ — คำนวณจากข้อมูลของฉันเท่านั้น ─────────────────────
+type Todo = { em: string; t: string; s: string; tone: "urgent" | "soon" | "normal"; on: () => void };
+function TodayTodo({ data, go, openAnn, onFees, onZone }: { data: AppData; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void; onFees: () => void; onZone: () => void }) {
+  const { board, mine } = data;
+  const now = Date.now();
+  const today = bkkDayKey(now);
+  const items = useMemo(() => {
+    const out: Todo[] = [];
+    const stateOf = (id: string) => mine.forms.find((f) => f.id === id)?.state ?? "none";
+    for (const e of board.exams) {
+      const t = new Date(e.at).getTime();
+      if (t < now || dayDiff(e.at, now) > 1) continue;
+      out.push({ em: "📚", t: `สอบ ${e.name}`, s: `${dayDiff(e.at, now) === 0 ? "วันนี้" : "พรุ่งนี้"} ${thTime(e.at)} น.${e.room ? ` · ${e.room}` : ""}`, tone: "urgent", on: () => go("schedule") });
+    }
+    const forms = board.forms.filter((f) => !f.closed && stateOf(f.id) === "none").sort((a, b) => (a.deadline_at || "9").localeCompare(b.deadline_at || "9"));
+    for (const f of forms) {
+      const d = f.deadline_at ? dayDiff(f.deadline_at, now) : 99;
+      out.push({ em: "📝", t: `กรอก ${f.name}`, s: f.deadline_at ? `ปิด ${relativeTh(f.deadline_at, now)}` : "ยังไม่มีกำหนดปิด", tone: d <= 1 ? "urgent" : d <= 3 ? "soon" : "normal", on: () => go("home", "todo") });
+    }
+    const fees = mine.fees;
+    if (fees.months.length && fees.outstanding > 0) {
+      out.push({ em: "💸", t: `จ่ายเงินรุ่น ${fees.outstanding.toLocaleString()} บาท`, s: fees.overdue ? "เลยกำหนดแล้ว · นับใน Red Zone" : fees.next?.due ? `ภายใน ${thDateTime(fees.next.due)}` : "แนบสลิปในแอปได้เลย", tone: fees.overdue ? "urgent" : "soon", on: onFees });
+    }
+    const z = mine.zone;
+    if (z.level === "red" || z.level === "close") {
+      out.push({ em: "📕", t: z.misses ? `ทบทวนข้อสอบที่ยังไม่ได้จำ (${z.misses})` : "เคลียร์ Red Zone", s: z.title, tone: z.level === "red" ? "urgent" : "soon", on: onZone });
+    }
+    const classes = board.schedule.filter((c) => c.date === today).sort((a, b) => a.start.localeCompare(b.start));
+    const nowHm = new Date(now + 7 * 3600_000).toISOString().slice(11, 16);
+    const left = classes.filter((c) => (c.end || c.start) >= nowHm);
+    if (left.length) out.push({ em: "🏫", t: `เรียนอีก ${left.length} คาบวันนี้`, s: `ถัดไป ${left[0].start} น. ${left[0].subject}${left[0].room ? ` · ${left[0].room}` : ""}`, tone: "normal", on: () => go("schedule") });
+    return out;
+  }, [board, mine, now, today, go, onFees, onZone]);
+  const head = board.daily && board.daily.date === today ? board.daily.headline : "";
+  const urgent = items.filter((i) => i.tone === "urgent").length;
+  return (
+    <div className="plain today-todo">
+      {head && <div className="tt-head">☀️ {head}</div>}
+      {items.length === 0 ? (
+        <div className="tt-empty">🎉 วันนี้ไม่มีอะไรค้าง พักผ่อนได้เต็มที่</div>
+      ) : (
+        <>
+          <div className="tt-sum">{items.length} อย่าง{urgent ? <b> · ด่วน {urgent}</b> : null}</div>
+          {items.map((it, i) => (
+            <button key={i} className={`tt-row press ${it.tone}`} onClick={() => { haptic(); it.on(); }}>
+              <span className="tt-em">{it.em}</span>
+              <span className="tt-b"><b>{it.t}</b><small>{it.s}</small></span>
+              <IChevronR width={15} height={15} />
+            </button>
+          ))}
+        </>
+      )}
+      {board.daily && board.daily.date === today && board.daily.items.some((x) => x.ref) && (
+        <div className="tt-more">
+          {board.daily.items.filter((x) => x.ref && board.announcements.some((a) => a.id === x.ref)).slice(0, 3).map((x, i) => (
+            <button key={i} className="chip press" onClick={() => openAnn(x.ref!)}>{x.emoji} {x.text.slice(0, 28)}{x.text.length > 28 ? "…" : ""}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ✦ เครดิตลับ
+const ROLL = [
+  { k: "sm", t: "BM33 · LINE OA · App · Control Center" },
+  { k: "gap" },
+  { k: "sm", t: "คิด ออกแบบ และเขียนทุกบรรทัดโดย" },
+  { k: "xl", t: "บิงโก" },
+  { k: "md", t: "วีร์ทิวัตถ์ · ฝ่ายสื่อสารองค์กร" },
+  { k: "gap" },
+  { k: "sm", t: "บอทที่ตอบได้ทุกเรื่องของรุ่น" },
+  { k: "sm", t: "แอปที่รวมทุกประกาศไว้ที่เดียว" },
+  { k: "sm", t: "เซียมซีมังกร · ปฏิทิน · Red Zone" },
+  { k: "sm", t: "เตือนรวมข้อความเดียว · ศูนย์ควบคุมของกรรมการ" },
+  { k: "gap" },
+  { k: "md", t: "ทำขึ้นเพื่อให้ไม่มีใครต้องไล่แชตดันอีกต่อไป 💙" },
+  { k: "gap" },
+  { k: "sm", t: "ขอบคุณกรรมการรุ่นและเพื่อน BM33 ทุกคน" },
+  { k: "gap" },
+  { k: "tiny", t: "✦ คุณเจอความลับแล้ว อย่าบอกใครนะ 🤫" },
+] as const;
+
+function Credits({ onClose }: { onClose: () => void }) {
+  const stars = useMemo(() => Array.from({ length: 70 }, (_, i) => ({ x: (i * 73) % 100, y: (i * 37 + (i % 7) * 11) % 100, s: 1 + (i % 3), d: (i % 9) * 0.4 })), []);
+  useEffect(() => { const t = setTimeout(onClose, 30_000); return () => clearTimeout(t); }, [onClose]);
+  return (
+    <Layer>
+      <div className="credits" onClick={onClose} role="dialog" aria-label="เครดิต">
+        {stars.map((st, i) => <i key={i} style={{ left: `${st.x}%`, top: `${st.y}%`, width: st.s, height: st.s, animationDelay: `${st.d}s` }} />)}
+        <div className="cr-glow" />
+        <div className="cr-roll">
+          <div className="cr-logo">33</div>
+          {ROLL.map((r, i) => r.k === "gap" ? <div key={i} className="cr-gap" /> : <div key={i} className={`cr-${r.k}`}>{r.t}</div>)}
+        </div>
+        <div className="cr-tap">แตะเพื่อปิด</div>
+      </div>
+    </Layer>
   );
 }
 

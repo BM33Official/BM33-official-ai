@@ -62,13 +62,14 @@ export default function PortalApp() {
   const go = useCallback((t: TabKey, section?: string) => {
     haptic();
     if (t === "me") setMeSection(section);
+    if (t === "home" && section) setHomeFocus(section);
     if (t === tab) screens.current[t]?.scrollTo({ top: 0, behavior: "smooth" });
     setTab(t);
   }, [tab]);
 
-  const claimForm = useCallback(async (id: string) => {
-    const r = await app.api("claim", { formId: id });
-    setToast(r.ok ? (r.state === "done" ? "ตรวจพบในระบบแล้ว ✓ ขอบคุณนะ" : "รับเรื่องแล้ว รอกรรมการตรวจ 🙏") : String(r.error ?? "ลองใหม่อีกครั้งนะ"));
+  const claimForm = useCallback(async (id: string, undo = false) => {
+    const r = await app.api(undo ? "unclaim" : "claim", { formId: id });
+    setToast(!r.ok ? String(r.error ?? "ลองใหม่อีกครั้งนะ") : undo ? "ยกเลิกแล้ว กรอกเสร็จค่อยติ๊กใหม่นะ" : r.state === "done" ? "ตรวจพบในระบบแล้ว ✓ ขอบคุณนะ" : "รับเรื่องแล้ว รอกรรมการตรวจ 🙏");
     app.refresh();
   }, [app]);
 
@@ -118,7 +119,7 @@ export default function PortalApp() {
           />
         </section>
         <section ref={(el) => { screens.current.me = el; }} className={`screen ${tab === "me" ? "active" : ""}`} aria-hidden={tab !== "me"}>
-          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} />
+          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} go={go} openAnn={setOpenId} />
         </section>
       </main>
 

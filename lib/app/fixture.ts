@@ -19,31 +19,33 @@ export function applyFixture<T extends State>(s: T, opts: { draw?: string } = {}
       id: "AN-FX1", title: "ส่งฟอร์มเลือกวิชาเลือกเสรี", summary: "ทุกคนต้องเลือกวิชาเลือกเสรีเทอมหน้า 2 วิชา ผ่านฟอร์มของคณะ ภายในพรุ่งนี้ 23:59 น.",
       body: "@All 📢 รบกวนเพื่อน ๆ ทุกคนกรอกฟอร์มเลือกวิชาเลือกเสรีเทอมหน้าด้วยน้าาา เลือกได้ 2 วิชา\nปิดพรุ่งนี้ 23:59 น. นะค้าบ ใครกรอกแล้วข้ามได้เลย 🙏\nhttps://forms.gle/example-elective",
       author: "ไปร์ท", author_role: "ประธานรุ่น", category: "ฟอร์ม/เอกสาร", deadline_at: at(1, "23:59"), event_at: "", location: "",
-      links: [{ label: "กรอกฟอร์มเลือกวิชา", url: "https://forms.gle/example-elective" }], pinned: true, created_at: new Date(now - 5 * 3600_000).toISOString(), updated_at: "", form_id: "F-FX1",
+      links: [{ label: "กรอกฟอร์มเลือกวิชา", url: "https://forms.gle/example-elective" }], pinned: true, created_at: new Date(now - 5 * 3600_000).toISOString(), updated_at: "", form_id: "F-FX1", cal: "fx",
     },
     {
       id: "AN-FX2", title: "ต้อนรับน้องปี 1 — รับสมัครสตาฟ", summary: "รับสตาฟงานต้อนรับน้อง 12 คน ซ้อมวันศุกร์นี้ 17:00 ที่ลานกิจกรรม สมัครในฟอร์มภายในพฤหัส",
       body: "ฝ่ายกิจการภายในรับสมัครสตาฟงานต้อนรับน้องปี 1 จำนวน 12 คน 🎉 ซ้อมครั้งแรกศุกร์นี้ 17:00 น. ลานกิจกรรมตึกเรียนรวม\nสมัครได้ที่ https://forms.gle/example-staff",
       author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม", deadline_at: at(4, "18:00"), event_at: at(5, "17:00"), location: "ลานกิจกรรม อาคารเรียนรวม",
-      links: [{ label: "สมัครสตาฟ", url: "https://forms.gle/example-staff" }], pinned: false, created_at: new Date(now - 26 * 3600_000).toISOString(), updated_at: "", form_id: "",
+      links: [{ label: "สมัครสตาฟ", url: "https://forms.gle/example-staff" }], pinned: false, created_at: new Date(now - 26 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
     },
     {
       id: "AN-FX3", title: "เงินรุ่นเดือนตุลาคม 300 บาท", summary: "เงินรุ่น ต.ค. 300 บาท/คน โอนพร้อมเพย์แล้วแจ้งสลิปในฟอร์ม ภายใน 15 ต.ค.",
       body: "เงินรุ่นเดือนตุลาคมคนละ 300 บาทน้า 💸 โอนพร้อมเพย์แล้วแนบสลิปในฟอร์มภายใน 15 ต.ค. ค่ะ ใครจ่ายรายปีแล้วไม่ต้องจ่ายนะคะ",
       author: "เค้ก", author_role: "ฝ่ายการเงิน", category: "การเงิน", deadline_at: at(18, "23:59"), event_at: "", location: "",
-      links: [{ label: "แจ้งโอน", url: "https://forms.gle/example-pay" }], pinned: false, created_at: new Date(now - 3 * 86_400_000).toISOString(), updated_at: "", form_id: "",
+      links: [{ label: "แจ้งโอน", url: "https://forms.gle/example-pay" }], pinned: false, created_at: new Date(now - 3 * 86_400_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
     },
     {
       id: "AN-FX4", title: "ปรับห้องเรียน Immunology วันพุธ", summary: "คาบ Immunology วันพุธย้ายไปห้อง 702 ชั้น 7 อาคารเรียนรวม เวลาเดิม",
       body: "แจ้งเปลี่ยนห้องเรียน Immunology วันพุธนี้ย้ายไปห้อง 702 ชั้น 7 นะครับ เวลาเดิม 09:00", author: "นาย", author_role: "ฝ่ายวิชาการ",
-      category: "วิชาการ", deadline_at: "", event_at: at(2, "09:00"), location: "ห้อง 702 อาคารเรียนรวม", links: [], pinned: false, created_at: new Date(now - 50 * 60_000).toISOString(), updated_at: "", form_id: "",
+      category: "วิชาการ", deadline_at: "", event_at: at(2, "09:00"), location: "ห้อง 702 อาคารเรียนรวม", links: [], pinned: false, created_at: new Date(now - 50 * 60_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
     },
   ];
   board.forms = [
-    { id: "F-FX1", name: "ฟอร์มเลือกวิชาเลือกเสรี", deadline_at: at(1, "23:59"), link: "https://forms.gle/example-elective", description: "กรอกทุกคน · ใช้เวลา 2 นาที", type: "form" },
-    { id: "F-FX2", name: "Wellness survey ภาคเรียนที่ 1", deadline_at: at(9, "18:00"), link: "https://forms.gle/example-wellness", description: "", type: "form" },
+    { id: "F-FX1", name: "ฟอร์มเลือกวิชาเลือกเสรี", deadline_at: at(1, "23:59"), link: "https://forms.gle/example-elective", description: "กรอกทุกคน · ใช้เวลา 2 นาที", type: "form", closed: false },
+    { id: "F-FX2", name: "Wellness survey ภาคเรียนที่ 1", deadline_at: at(9, "18:00"), link: "https://forms.gle/example-wellness", description: "", type: "form", closed: false },
+    { id: "F-FX3", name: "สั่งจองชุดครุยพิธีเข้าวอร์ด", deadline_at: new Date(now - 6 * 3600_000).toISOString(), link: "https://forms.gle/example-gown", description: "", type: "form", closed: true },
+    { id: "F-FX4", name: "ส่งรูปทำบัตร นศ.", deadline_at: at(3, "12:00"), link: "https://forms.gle/example-card", description: "", type: "form", closed: false },
   ];
-  mine.forms = [{ id: "F-FX1", state: "none" }, { id: "F-FX2", state: "done" }];
+  mine.forms = [{ id: "F-FX1", state: "none", undo: false }, { id: "F-FX2", state: "done", undo: true }, { id: "F-FX3", state: "none", undo: false }, { id: "F-FX4", state: "claimed", undo: true }];
   const lect = (d: number, start: string, end: string, subject: string, topic: string, lecturer: string, room: string, kind = "lecture") =>
     ({ id: `SC-${d}-${start}`, date: day(d), start, end, subject, topic, lecturer, building: "อาคารเรียนรวม", room, kind, note: "", block: "Block Immune" });
   board.schedule = [
@@ -78,7 +80,7 @@ export function applyFixture<T extends State>(s: T, opts: { draw?: string } = {}
     outstanding: 300, overdue: 0, paidCount: 3, yearly: false,
     next: { month: "2026-10", label: "ต.ค. 69", amount: 300, due: at(18, "23:59"), state: "unpaid", paid_at: "", note: "" },
   };
-  mine.zone = { level: "close", misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], gauge: 0.72, title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ข้อที่ค้างก่อนสอบครั้งหน้านะ" };
+  mine.zone = { level: "close", misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], feeMisses: 1, feeMonths: ["ก.ย. 69"], gauge: 0.72, title: "ใกล้ Red Zone", text: "ใกล้เส้นแดงแล้ว ขอแรงอีกนิด เคลียร์ข้อที่ค้างก่อนสอบครั้งหน้านะ" };
   if (opts.draw) {
     const show = opts.draw === "reveal" ? now - 120_000 : now - 20_000;
     const reveal = opts.draw === "reveal" ? now - 10_000 : now + 70_000;

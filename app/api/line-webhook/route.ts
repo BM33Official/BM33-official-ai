@@ -241,22 +241,24 @@ async function isApprover(userId: string): Promise<boolean> {
   return (await approverIds()).includes(userId);
 }
 
-async function runApproval(act: "approve" | "reject", idOrCode: string, userId: string): Promise<string> {
+async function runApproval(act: "approve" | "reject", idOrCode: string, userId: string, picks: number[] = []): Promise<string> {
   const { approveAndSend, rejectOutbox } = await import("@/lib/bc/outbox");
   if (act === "reject") {
     return (await rejectOutbox(idOrCode, userId)) ? `ยกเลิกรายการ ${idOrCode} แล้ว ❌ (ไม่ส่ง)` : "ไม่พบรายการที่รออนุมัตินี้";
   }
-  const r = await approveAndSend(idOrCode, userId);
-  if (r.ok) return `ส่งแล้ว ✅ "${r.item?.title ?? ""}" ถึง ${r.count} คน`;
+  const r = await approveAndSend(idOrCode, userId, { picks });
+  if (r.ok) return r.item?.kind === "digest" ? `ส่งเตือนรวมแล้ว ✅ ถึง ${r.count} คน (คนละ 1 ข้อความ)` : `ส่งแล้ว ✅ "${r.item?.title ?? ""}" ถึง ${r.count} คน`;
   return `ยังส่งไม่ได้: ${r.error ?? "ไม่ทราบสาเหตุ"}`;
 }
 
 async function maybeHandleApproval(replyToken: string, userId: string, rawText: string): Promise<boolean> {
-  const m = rawText.trim().match(/^(approve|อนุมัติ|ok ส่ง|ส่งเลย|reject|ไม่ส่ง|ยกเลิกส่ง)\s*#?\s*(\w+)?\s*$/i);
+  // approve 123 · approve 123 1 3 (เตือนรวม: ส่งเฉพาะข้อ 1 กับ 3) · approve all · reject 123
+  const m = rawText.trim().match(/^(approve|อนุมัติ|ok ส่ง|ส่งเลย|reject|ไม่ส่ง|ยกเลิกส่ง)\s*#?\s*(\w+)?((?:[\s,]+\d{1,2})*)\s*$/i);
   if (!m) return false;
   if (!(await isApprover(userId))) return false;
   const act = /^(reject|ไม่ส่ง|ยกเลิกส่ง)/i.test(m[1]) ? "reject" : "approve";
   const arg = (m[2] ?? "").trim();
+  const picks = (m[3] ?? "").split(/[\s,]+/).map(Number).filter((n) => n > 0);
   const { pendingOutbox } = await import("@/lib/bc/outbox");
   const pending = await pendingOutbox(true);
   let targets: string[] = [];
@@ -277,7 +279,7 @@ async function maybeHandleApproval(replyToken: string, userId: string, rawText: 
     return true;
   }
   const results: string[] = [];
-  for (const t of targets) results.push(await runApproval(act, t, userId));
+  for (const t of targets) results.push(await runApproval(act, t, userId, targets.length === 1 ? picks : []));
   await safeReply(replyToken, userId, [textMessage(results.join("\n"))]);
   return true;
 }

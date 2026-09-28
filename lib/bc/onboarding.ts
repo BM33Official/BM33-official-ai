@@ -10,7 +10,7 @@ type Msg = messagingApi.Message;
 const text = (t: string): Msg => ({ type: "text", text: t });
 
 const ASK =
-  "สวัสดีค้าบ 👋 ยินดีต้อนรับสู่บอทกลางรุ่น BM33\nรบกวนพิมพ์ ชื่อ-นามสกุล และ เลข 3 ตัวท้ายของรหัสนักศึกษา เพื่อยืนยันตัวตนนะ\n(ตัวอย่าง: บิงโก วีร์ทิวัตถ์ 123)";
+  "สวัสดีค้าบ 👋 ยินดีต้อนรับสู่บอทกลางรุ่น BM33\nรบกวนพิมพ์ ชื่อเล่น ชื่อจริง และ เลข 3 ตัวท้ายของรหัสนักศึกษา ในข้อความเดียว เพื่อยืนยันตัวตนนะ\n(ตัวอย่าง: บิงโก วีร์ทิวัตถ์ 071)";
 
 // follow — เริ่ม onboarding
 export async function handleFollow(userId: string, displayName: string): Promise<Msg[]> {
@@ -40,7 +40,7 @@ export async function handleOnboardingText(member: Member, input: string): Promi
   await ensureBcTabs();
   const { name, last3 } = parse(input);
   if (!last3) {
-    return [text("ขอเลข 3 ตัวท้ายของรหัสนักศึกษาด้วยนะ 🙏\n(ตัวอย่าง: บิงโก 123)")];
+    return [text("ขอเลข 3 ตัวท้ายของรหัสนักศึกษาด้วยนะ 🙏\n(ตัวอย่าง: บิงโก วีร์ทิวัตถ์ 071)")];
   }
   const res = await matchRoster(name, last3);
 
@@ -67,7 +67,7 @@ export async function handleOnboardingText(member: Member, input: string): Promi
 
   // ไม่พบ 3 หลักท้ายในทะเบียน
   await patchMember(member, { claimed_name: name, last3, onboarding_state: "awaiting_info" });
-  return [text("ไม่พบรหัสลงท้ายเลขนี้ในทะเบียนรุ่นเลย ลองเช็กอีกครั้งแล้วพิมพ์ใหม่นะ (ชื่อ + 3 ตัวท้ายรหัส นศ.)")];
+  return [text("ไม่พบรหัสลงท้ายเลขนี้ในทะเบียนรุ่นเลย ลองเช็กอีกครั้งแล้วพิมพ์ใหม่นะ (ตัวอย่าง: บิงโก วีร์ทิวัตถ์ 071)")];
 }
 
 // ตอบ confirm (จาก postback หรือพิมพ์ ใช่/ไม่)

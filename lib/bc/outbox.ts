@@ -46,6 +46,7 @@ export function audienceLabel(audience: string): string {
   if (kind === "undone") return "เฉพาะคนที่ยังไม่ทำฟอร์ม";
   if (kind === "ids") return `เฉพาะ ${arg.split(",").filter(Boolean).length} คนที่เกี่ยวข้อง`;
   if (kind === "admins") return "เฉพาะแอดมิน";
+  if (kind === "batch") return "เฉพาะคนที่ยังไม่ทำ (ข้อความเดียวต่อคน)";
   return "ทุกคนที่ลงทะเบียน";
 }
 
@@ -71,6 +72,8 @@ export async function createOutbox(input: {
   kind: string; ref_id?: string; title: string; audience: string; messages: Msg[]; preview: string; expires_at?: string; notify?: boolean;
   // ข้อความเฉพาะคน (key = student id) — เช่น เตือน red zone / เงินค้างที่ใส่ยอดของแต่ละคน
   perRecipient?: Record<string, Msg[]>;
+  // เก็บข้อมูลดิบแทนข้อความ (เช่น เตือนรวม = {keys}) — ประกอบข้อความตอนส่ง
+  payload?: unknown;
 }): Promise<OutboxItem> {
   // กันซ้ำ: ref เดียวกันที่ยังรออยู่ ไม่สร้างใหม่
   if (input.ref_id) {
@@ -83,7 +86,7 @@ export async function createOutbox(input: {
     ref_id: input.ref_id ?? "",
     title: input.title,
     audience: input.audience,
-    messages: input.perRecipient ? packMessages({ per: input.perRecipient }) : packMessages(input.messages.slice(0, 5)),
+    messages: input.payload !== undefined ? packMessages(input.payload) : input.perRecipient ? packMessages({ per: input.perRecipient }) : packMessages(input.messages.slice(0, 5)),
     preview: input.preview.slice(0, 4000),
     status: "pending",
     code: await nextCode(),
@@ -94,7 +97,7 @@ export async function createOutbox(input: {
     expires_at: input.expires_at ?? "",
   };
   await appendRecord("outbox", item as unknown as Record<string, string>);
-  if (input.notify !== false) await notifyApprovers(item).catch((err) => log.warn("outbox_notify_failed", { message: String(err) }));
+  if (input.notify !== false && input.kind !== "digest") await notifyApprovers(item).catch((err) => log.warn("outbox_notify_failed", { message: String(err) }));
   return item;
 }
 
@@ -148,8 +151,8 @@ export async function notifyApprovers(item: OutboxItem): Promise<void> {
 
 export interface SendOutcome { ok: boolean; count: number; error?: string; item?: OutboxItem }
 
-// อนุมัติ + ส่งจริง
-export async function approveAndSend(idOrCode: string, by: string): Promise<SendOutcome> {
+// อนุมัติ + ส่งจริง · เตือนรวม: keys = เรื่องที่เลือกส่ง (ไม่ใส่ = ทุกเรื่องในรายการ) · picks = เลขข้อ (1-based) จาก LINE
+export async function approveAndSend(idOrCode: string, by: string, opts: { keys?: string[]; picks?: number[] } = {}): Promise<SendOutcome> {
   const all = await readOutbox(true);
   const item = all.find((o) => o.id === idOrCode) ?? all.find((o) => o.code === idOrCode && o.status === "pending");
   if (!item?.__row) return { ok: false, count: 0, error: "ไม่พบรายการนี้" };
@@ -160,12 +163,27 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
   }
   let messages: Msg[] = [];
   let per: Record<string, Msg[]> | null = null;
+  let batch: string[] | null = null;
   try {
-    const v = unpackMessages(item.messages) as Msg[] | { per?: Record<string, Msg[]> };
-    if (Array.isArray(v)) messages = v; else if (v && v.per) per = v.per;
+    const v = unpackMessages(item.messages) as Msg[] | { per?: Record<string, Msg[]>; keys?: string[] };
+    if (Array.isArray(v)) messages = v; else if (v && v.per) per = v.per; else if (v && Array.isArray(v.keys)) batch = v.keys;
   } catch { /* ignore */ }
-  if (!messages.length && !per) return { ok: false, count: 0, error: "ไม่มีข้อความ", item };
-  const members = await resolveAudience(item.audience);
+  let sentNote = "";
+  let members: Member[];
+  if (batch) {
+    // เตือนรวม: ประกอบข้อความสดตอนนี้ (สถานะ "ทำแล้ว" ล่าสุด) เฉพาะเรื่องที่เลือก
+    const picked = opts.keys?.length ? opts.keys : opts.picks?.length ? opts.picks.map((n) => batch![n - 1]).filter(Boolean) : batch;
+    const { compileBatch } = await import("@/lib/bc/digest");
+    const c = await compileBatch(picked);
+    if (!c.items.length) return { ok: false, count: 0, error: "ไม่มีเรื่องที่ยังเตือนได้ (หมดเวลาแล้ว หรือไม่ได้เลือก)", item };
+    per = c.per;
+    const ids = new Set(Object.keys(c.per));
+    members = (await verifiedMembers()).filter((m) => ids.has(digits(m.matched_student_id)));
+    sentNote = ` · ${c.items.length} เรื่อง: ${c.items.map((i) => i.title).join(" / ")}`.slice(0, 250);
+  } else {
+    if (!messages.length && !per) return { ok: false, count: 0, error: "ไม่มีข้อความ", item };
+    members = await resolveAudience(item.audience);
+  }
   const recipients = members.map((m) => m.line_user_id).filter(Boolean);
   if (!recipients.length) {
     await patchRecord("outbox", item.__row, item as never, { status: "sent", decided_at: nowISO(), sent_at: nowISO(), result: "no_recipients" });
@@ -178,10 +196,9 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
   await patchRecord("outbox", item.__row, item as never, { status: "approved", decided_at: nowISO(), result: `by ${by}` });
   try {
     if (per) {
-      for (const m of members) {
-        const msgs = per[digits(m.matched_student_id)];
-        if (m.line_user_id && msgs?.length) await pushTo(m.line_user_id, msgs.slice(0, 5));
-      }
+      // ส่งทีละ 8 คนพร้อมกัน (100 คน ≈ 3-4 วิ แทน ~20 วิ)
+      const jobs = members.map((m) => ({ to: m.line_user_id, msgs: per![digits(m.matched_student_id)] })).filter((j) => j.to && j.msgs?.length);
+      for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map((j) => pushTo(j.to, j.msgs.slice(0, 5))));
     } else {
       await multicastTo(recipients, messages);
     }
@@ -191,7 +208,7 @@ export async function approveAndSend(idOrCode: string, by: string): Promise<Send
     return { ok: false, count: 0, error: String(err), item };
   }
   const fresh = (await readOutbox(true)).find((o) => o.id === item.id);
-  if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "sent", sent_at: nowISO(), result: `sent ${recipients.length} · by ${by}` });
+  if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "sent", sent_at: nowISO(), result: `sent ${recipients.length} · by ${by}${sentNote}` });
   return { ok: true, count: recipients.length, item };
 }
 

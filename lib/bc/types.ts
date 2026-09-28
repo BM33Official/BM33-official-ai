@@ -46,6 +46,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "id_column", "done_condition", "access", "created_at",
     "deadline_at", "link", "description", "status",
     "source", "announcement_id", "trust_claims",
+    "closed_at",
   ],
   status: ["student_id", "form_id", "state", "source", "updated_at", "note"],
   broadcasts: [
@@ -169,6 +170,7 @@ export interface FormDef {
   source?: string; // "" (เพิ่มเอง) | auto (สร้างจากประกาศอัตโนมัติ)
   announcement_id?: string;
   trust_claims?: string; // "1" = กด "กรอกแล้ว" ในแอป = เสร็จเลย ไม่ต้องรอแอดมินยืนยัน
+  closed_at?: string; // ISO — เวลาที่กดปิด (แอปยังโชว์ต่ออีก 1 วันแล้วซ่อน)
 }
 
 export type StatusState = "done" | "claimed" | "confirmed" | "none";

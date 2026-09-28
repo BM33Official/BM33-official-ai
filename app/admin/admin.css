@@ -374,3 +374,26 @@ details.who-col:not([open]) .who-h { margin-bottom: 0; }
 .nc-red b { background: var(--red); } .nc-orange b { background: var(--orange); } .nc-green b { background: var(--green); } .nc-gray b { background: #8e8e93; }
 .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 640px) { .g3 { grid-template-columns: minmax(0, 1fr); } }
+
+/* เตือนรวม (รออนุมัติ) — ติ๊กเลือกเรื่อง + ตัวอย่างการ์ด LINE ที่เลื่อนได้ */
+.batch-list { display: grid; gap: 8px; }
+.batch-list.add { padding: 10px; border-radius: 16px; background: var(--fill); }
+.batch-it { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--fill); cursor: pointer; text-align: left; border: 2px solid transparent; transition: border-color .15s, background .15s; width: 100%; font: inherit; color: inherit; }
+.batch-list.add .batch-it { background: var(--card, #fff); }
+.batch-it.on { border-color: #34c759; background: rgba(52,199,89,.08); }
+.batch-it input { width: 20px; height: 20px; accent-color: #34c759; flex: none; }
+.batch-em { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; font-size: 16px; flex: none; }
+.batch-b { display: flex; flex-direction: column; min-width: 0; }
+.batch-b b { font-size: 15px; line-height: 1.35; }
+.batch-b small { color: var(--muted); font-size: 12.5px; }
+.lc-car { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+.lc-card { flex: none; width: 150px; background: #fff; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; color: #0f172a; scroll-snap-align: start; }
+.lc-card.sum { width: 210px; }
+.lc-h { padding: 8px 10px; color: #fff; display: flex; flex-direction: column; gap: 2px; }
+.lc-h small { font-size: 11px; font-weight: 800; opacity: .9; }
+.lc-h b { font-size: 15px; }
+.lc-body { padding: 10px; display: grid; gap: 8px; font-size: 12.5px; flex: 1; }
+.lc-body > div, .lc-body { line-height: 1.35; }
+.lc-body small { display: block; font-size: 11px; font-weight: 800; margin-top: 2px; }
+.lc-btn { margin: 0 8px 8px; padding: 7px; border-radius: 8px; text-align: center; color: #fff; font-size: 12px; font-weight: 800; }
+.lc-btn.sec { background: #f1f5f9; color: #334155; }

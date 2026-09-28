@@ -148,8 +148,8 @@ export function RegisterScreen({ name, onSubmit }: { name?: string; onSubmit: (n
         <h1>ขอรู้จักหน่อย 👋</h1>
         <div className="soft small" style={{ lineHeight: 1.55 }}>ยืนยันตัวตนครั้งเดียว แล้วแอปจะจำคุณไว้ตลอด (ข้อมูลเงินรุ่น งานค้าง และสถานะส่วนตัวจะเห็นได้เฉพาะคุณ)</div>
         <div className="field">
-          <label>ชื่อจริง หรือ ชื่อเล่น</label>
-          <input value={n} onChange={(e) => setN(e.target.value)} placeholder="เช่น บิงโก" autoComplete="off" />
+          <label>ชื่อเล่น ชื่อจริง</label>
+          <input value={n} onChange={(e) => setN(e.target.value)} placeholder="เช่น บิงโก วีร์ทิวัตถ์" autoComplete="off" />
         </div>
         <div className="field">
           <label>เลข 3 ตัวท้ายของรหัสนักศึกษา</label>

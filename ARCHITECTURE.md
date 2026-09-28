@@ -76,6 +76,15 @@ Nothing reaches classmates until someone approves (LINE `approve 123` / `approve
 `lib/bc/auth.ts` — cookie `<role>.<hmac(role|passwordHash)>`. admin = env `ADMIN_PANEL_PASSWORD`; academic/finance = hash in BC_config (Settings page) or env. `roleCan()` restricts action prefixes (academic: `academic.*`, `draw.*`; finance: `finance.*`).
 Magic links: `/admin/k/<role>.<hmac(link|role|credHash)[:32]>` sets the cookie for 60 days (Settings → ลิงก์เข้าตรง). Changing the password kills old links.
 
+## Reminders (v5 — เตือนรวม)
+`lib/bc/digest.ts`. One open batch = `BC_outbox` row kind `digest`, audience `batch`, messages = `{keys:[form:<id>|ann:<id>|exam:<id>]}`. `runReminderCron` → `runDailyBatch`: every tick merges old per-item pending reminders (status `merged`); once a day ≥08:00 (config `digest_auto_day`) adds items inside the `reminder_plan` window and pushes ONE `batchFlex` to approvers. Manual "เตือน" buttons (`form.remind`, `announce.remind`, new announcement + ส่ง LINE) → `addToBatch` (no push). Approval (LINE button / `approve 123` / `approve 123 1 3` / inbox BatchCard with `keys`) → `approveAndSend` → `compileBatch` at send time → each member ONE flex carousel with only their undone items. Deleted per-item functions `queueAnnouncementReminder/queueFormReminder`.
+
+## Visibility (v5)
+`lib/bc/forms.ts` `formEndedAt/formVisible/announcementVisible`: closed (`closed_at`) or past-deadline forms/announcements stay 1 day, then leave the app board and personal state.
+
+## Red Zone (v5)
+`ranking()` score = recency-weighted missed exams + overdue fee months × `red_zone_fee_weight` (off with `red_zone_fees=0`). `RankRow.feeMisses/feeMonths`. Finance page card `RedZoneFees`.
+
 ## Reminders (v4)
 `runReminderCron` → `queueDailyDigest` once per day (≥08:00, ref `digest:YYYY-MM-DD`): items due within the `reminder_plan` window (forms, announcements without forms, uni exams ≤3 d); each verified member gets ONE text + link carousel with only their undone items (claimed counts as done). Outbox payloads >40K chars are gzip+base64 (`packMessages`/`unpackMessages`). Manual per-item buttons still exist (form/announcement remind). Forms with `trust_claims=1`: app "กรอกแล้ว" = confirmed immediately.
 

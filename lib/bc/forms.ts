@@ -48,6 +48,9 @@ export async function addForm(input: {
 export async function updateForm(form: FormDef, patch: Partial<FormDef>): Promise<void> {
   const latest = (await readForms(true)).find((f) => f.form_id === form.form_id);
   if (!latest?.__row) return;
+  // จำเวลาปิด (แอปโชว์ "ปิดแล้ว" ต่ออีก 1 วัน แล้วซ่อน) · เปิดใหม่ = ล้าง
+  if (patch.status === "closed" && latest.status !== "closed" && !patch.closed_at) patch = { ...patch, closed_at: new Date().toISOString() };
+  if (patch.status && patch.status !== "closed" && latest.closed_at) patch = { ...patch, closed_at: "" };
   await patchRecord("forms", latest.__row, latest as never, patch as Record<string, string>);
 }
 
@@ -75,4 +78,29 @@ export async function syncFormFromAnnouncement(a: { id: string; title: string; s
     name: a.title.slice(0, 80), type: "form", response_sheet_id: "", response_tab: "", id_column: "", done_condition: "",
     access: "manual", deadline_at: a.deadline_at, link, description: a.summary.slice(0, 300), source: "auto", announcement_id: a.id,
   });
+}
+
+// ── ปิดแล้ว = โชว์ต่ออีก 1 วัน แล้วซ่อนจากแอปทั้งหมด (ประกาศไม่รก) ─────────────────
+export const CLOSED_GRACE_MS = 86_400_000;
+// เวลาที่ฟอร์ม "จบ" (ปิดเอง หรือเลยเดดไลน์) · null = ยังเปิดอยู่ · 0 = จบนานแล้ว (ปิดก่อนมีการจำเวลา/ลบ)
+export function formEndedAt(f: Pick<FormDef, "status" | "deadline_at" | "closed_at">, now = Date.now()): number | null {
+  if (f.status === "deleted") return 0;
+  const dl = f.deadline_at ? new Date(f.deadline_at).getTime() : NaN;
+  if (f.status === "closed") {
+    const c = f.closed_at ? new Date(f.closed_at).getTime() : NaN;
+    return !isNaN(c) ? (!isNaN(dl) ? Math.min(c, dl) : c) : !isNaN(dl) && dl < now ? dl : 0;
+  }
+  return !isNaN(dl) && dl < now ? dl : null;
+}
+export function formVisible(f: Pick<FormDef, "status" | "deadline_at" | "closed_at">, now = Date.now()): boolean {
+  const end = formEndedAt(f, now);
+  return end === null || now - end < CLOSED_GRACE_MS;
+}
+// ประกาศ: เลยเดดไลน์ หรือฟอร์มที่ผูกไว้ปิดไปแล้ว > 1 วัน -> ซ่อน
+export function announcementVisible(a: { id: string; deadline_at: string; form_id: string }, forms: FormDef[], now = Date.now()): boolean {
+  const dl = a.deadline_at ? new Date(a.deadline_at).getTime() : NaN;
+  if (!isNaN(dl) && now - dl >= CLOSED_GRACE_MS) return false;
+  // ฟอร์มที่ถูกลบ (เช่น ไม่ใช่งานจริง) ไม่ทำให้ประกาศหาย — ดูเฉพาะที่ปิด/เลยเดดไลน์
+  const f = forms.find((x) => x.status !== "deleted" && ((a.form_id && x.form_id === a.form_id) || (x.announcement_id && x.announcement_id === a.id)));
+  return !f || formVisible(f, now);
 }

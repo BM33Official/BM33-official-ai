@@ -5,6 +5,7 @@
 //   GET  state                                         -> ข้อมูลทั้งหมด (board + ของฉัน)
 //   POST fortune  {state}                              -> ซิงก์สมุดเซียมซี
 //   POST claim    {formId}                             -> กด "ทำแล้ว"
+//   POST unclaim  {formId}                             -> ยกเลิก "ทำแล้ว" ที่กดเอง
 //   POST slip     {image(base64 jpeg), month?}         -> ส่งสลิปเงินรุ่น (AI ตรวจ → ฝ่ายการเงินยืนยัน)
 import { NextResponse } from "next/server";
 import {
@@ -15,7 +16,7 @@ import { appState } from "@/lib/app/state";
 import { syncFortune } from "@/lib/bc/fortune";
 import { currentRole } from "@/lib/bc/auth";
 import { getForm } from "@/lib/bc/forms";
-import { autoDoneSet, setStatus } from "@/lib/bc/status";
+import { autoDoneSet, setStatus, readOverlay } from "@/lib/bc/status";
 import { getMember, patchMember } from "@/lib/bc/members";
 import { readRoster } from "@/lib/bc/roster";
 import { nowISO, digits } from "@/lib/bc/sheets";
@@ -131,6 +132,18 @@ export async function POST(req: Request, { params }: { params: { action: string 
         }
         await setStatus(s.sid, form.form_id, "claimed", "self_claim", "กดทำแล้วในแอป");
         return NextResponse.json({ ok: true, state: "claimed" });
+      }
+
+      case "unclaim": {
+        // ยกเลิก "กรอกแล้ว" ที่กดเอง (กดผิด / อยากกลับไปเปิดลิงก์)
+        const s = currentSession();
+        if (!s) return bad("unauthorized", 401);
+        if (s.preview) return bad("โหมดพรีวิวกดไม่ได้");
+        const formId = String(body.formId ?? "");
+        const o = (await readOverlay(true)).find((x) => x.student_id.replace(/\D/g, "") === s.sid && x.form_id === formId);
+        if (!o || !o.source.startsWith("self_claim") || (o.state !== "claimed" && o.state !== "confirmed")) return bad("อันนี้ระบบ/กรรมการยืนยันแล้ว ยกเลิกเองไม่ได้");
+        await setStatus(s.sid, formId, "none", "self_unclaim", "ยกเลิกในแอป");
+        return NextResponse.json({ ok: true, state: "none" });
       }
 
       case "slip": {

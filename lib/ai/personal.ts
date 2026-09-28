@@ -37,7 +37,7 @@ export async function personalBlock(studentId: string): Promise<string> {
   }
   const r = rank.rows.find((x) => x.student_id === sid);
   if (r) {
-    lines.push(`การจำข้อสอบของฉัน: ${LEVEL_TH[r.level]} · ยังไม่ได้จำ ${r.misses} ครั้ง${r.missedExams.length ? ` (${r.missedExams.join(", ")})` : ""}`);
+    lines.push(`Red zone ของฉัน: ${LEVEL_TH[r.level]} · ยังไม่ได้จำ ${r.misses} ครั้ง${r.missedExams.length ? ` (${r.missedExams.join(", ")})` : ""}${r.feeMisses ? ` · เงินรุ่นเลยกำหนด ${r.feeMonths.join(", ")}` : ""} (red zone นับทั้งข้อสอบที่ยังไม่ได้จำและเงินรุ่นที่เลยกำหนด)`);
   }
   for (const d of draws) {
     if (!d.inPool) continue;

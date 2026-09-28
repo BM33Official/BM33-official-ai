@@ -1,5 +1,5 @@
 // เงินรุ่น — ฝ่ายการเงินใช้หน้าเดียว: สลิปรอตรวจ (AI ตรวจให้) → ภาพรวมรายเดือน → เตือนคนที่ยังไม่จ่าย
-import { Wallet, Receipt, CalendarRange, Landmark, FileSpreadsheet, Table2, History } from "lucide-react";
+import { Wallet, Receipt, CalendarRange, Landmark, FileSpreadsheet, Table2, History, Flame } from "lucide-react";
 import { requireRole } from "@/lib/bc/auth";
 import { readRoster } from "@/lib/bc/roster";
 import { readFeeMonths, financeMatrix, monthLabel } from "@/lib/bc/fees";
@@ -13,6 +13,8 @@ import FinanceSettings from "../ui/FinanceSettings";
 import FinanceImport from "../ui/FinanceImport";
 import FinanceBoard from "../ui/FinanceBoard";
 import SlipQueue from "../ui/SlipQueue";
+import RedZoneFees from "../ui/RedZoneFees";
+import { ranking, overdueFees, redZoneFeeRule } from "@/lib/bc/academic";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,11 @@ export default async function FinancePage() {
     amount: s.amount, paid_at: s.paid_at ? thDateTime(s.paid_at) : "", receiver: s.receiver, verdict: s.ai_verdict, note: s.ai_note, image: s.image, when: thDateTime(s.created_at), source: s.source,
   }));
   const decided = slips.filter((s) => s.status !== "pending").slice(-15).reverse();
+  // Red Zone จากเงินรุ่น (เลยกำหนดแล้วยังไม่จ่าย)
+  const [overdue, rule, rank] = await Promise.all([overdueFees(), redZoneFeeRule(), ranking()]);
+  const levelOf = new Map(rank.rows.map((r) => [r.student_id, r.level]));
+  const overdueRows = Array.from(overdue.entries()).map(([sid, list]) => ({ sid, nickname: nick.get(sid) ?? sid, months: list, level: levelOf.get(sid) ?? "safe" }))
+    .sort((a, b) => b.months.length - a.months.length || a.sid.localeCompare(b.sid));
 
   return (
     <div className="wrap">
@@ -47,6 +54,9 @@ export default async function FinancePage() {
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={CalendarRange} tone="teal" /> ใครจ่ายแล้วบ้าง</h2>
       <FinanceBoard months={monthsLite} initial={initial} rows={rows.map((r) => ({ sid: r.sid, nickname: r.nickname, cells: r.cells }))} />
+
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={Flame} tone="red" /> Red Zone จากเงินรุ่น {overdueRows.length > 0 && <span className="badge b-red">{overdueRows.length} คน</span>}</h2>
+      <RedZoneFees on={rule.on} weight={rule.weight} rows={overdueRows} />
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={Landmark} tone="green" /> บัญชีรับเงิน & การตรวจสลิป</h2>
       <FinanceSettings cfg={cfg} />

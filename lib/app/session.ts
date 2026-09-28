@@ -75,3 +75,13 @@ export function verifyClaim(token: string, sub: string): string | null {
   if (!s || s.uid !== `claim:${sub}`) return null;
   return s.sid;
 }
+
+// ลิงก์ไฟล์ปฏิทิน (.ics) ของประกาศ — เปิดนอก LINE ได้ (ไม่มี cookie) จึงเซ็นด้วย id
+export function signCal(id: string): string {
+  return createHmac("sha256", key()).update("cal|" + id).digest("base64url").slice(0, 16);
+}
+export function verifyCal(id: string, sig: string): boolean {
+  const want = Buffer.from(signCal(id));
+  const got = Buffer.from(String(sig ?? ""));
+  return want.length === got.length && timingSafeEqual(want, got);
+}

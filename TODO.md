@@ -1,3 +1,14 @@
+# BM33 v5 — fixes round (2026-09-28)
+- [x] Onboarding examples everywhere = "บิงโก วีร์ทิวัตถ์ 071" (ชื่อเล่น ชื่อจริง 3 ตัวท้าย) — bot ASK/retry, app sign-in, /join
+- [x] App สิ่งที่ต้องกรอก: tap a ticked item → "ยกเลิกติ๊ก" (`unclaim`, only own self-claims) · link stays visible ("เปิด") after ticking
+- [x] **เตือนรวม** (`lib/bc/digest.ts`): ONE pending outbox item (kind digest, payload `{keys}`) · 08:00 ONE LINE card to admin (ส่งทุกเรื่อง / เลือกเอง / ไม่ส่ง · `approve 123 1 3`) · inbox BatchCard with tick boxes + live preview · per-member ONE flex carousel (summary + link bubbles) compiled at send time (only their undone items) · manual "เตือน" buttons add to the batch · old per-item pending reminders auto-merged (status `merged`)
+- [x] ประกาศ "เพิ่มลงปฏิทิน": LINE webview blocks blob downloads → signed `/api/cal/<id>?s=` .ics opened in external browser (alarms −1 d, −2 h) + Google Calendar link
+- [x] Closed forms / past deadlines: shown 1 more day ("ปิดรับแล้ว"), then hidden from app (forms.closed_at column, SCHEMA v3.2)
+- [x] Red Zone = missed exams + overdue fee months (config `red_zone_fees`, `red_zone_fee_weight`) · finance tab card · academic role sees only "เงินรุ่นค้าง" (no months)
+- [x] ของฉัน: "สรุปสิ่งที่ต้องทำวันนี้" above ติดต่อกรรมการรุ่น
+- [x] Easter egg (credits) — tap the footer line at the bottom of ของฉัน 7 times
+- [ ] **User:** LINE OA Manager greeting message (if you set one there) still has the old example — edit it by hand
+
 # BM33 v4 — polish round (2026-09-28)
 - [x] Rich menu v4: 5 tiles on liquid blue (big หน้าหลัก · ประกาศ(+ต้องกรอก, deep link `focus=ann`) · ของฉัน · เซียมซี · ถามบอท) + LinkTree strip — `rich-menu/menu-v4.html` → `public/rich-menu-v4.jpg`, config `rich_menu_v4_id`
 - [x] App home = compact dashboard: big running countdown, fees/red-zone alert tiles, today's classes row, สิ่งที่ต้องกรอก above ประกาศ (grouped by date, no categories), darker glass panels for readability

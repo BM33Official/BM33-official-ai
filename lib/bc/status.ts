@@ -105,19 +105,22 @@ export async function summarize(form: FormDef): Promise<{ total: number; done: n
 }
 
 // สถานะทุกฟอร์มของนักศึกษาคนเดียว (ใช้ในแอป + AI) — ไม่เปิดเผยของคนอื่น
-export async function formStatesFor(studentId: string): Promise<{ form: FormDef; state: StatusState }[]> {
+export async function formStatesFor(studentId: string): Promise<{ form: FormDef; state: StatusState; undo: boolean }[]> {
   const sid = digits(studentId);
   const { readForms } = await import("@/lib/bc/forms");
   const [forms, overlay] = await Promise.all([readForms(), readOverlay()]);
-  const out: { form: FormDef; state: StatusState }[] = [];
+  const out: { form: FormDef; state: StatusState; undo: boolean }[] = [];
   for (const form of forms) {
-    if (form.status === "closed") continue;
+    const { formVisible } = await import("@/lib/bc/forms");
+    if (!formVisible(form)) continue; // ปิดเกิน 1 วัน = ไม่นับแล้ว
     const done = await autoDoneSet(form);
     const o = overlay.find((x) => digits(x.student_id) === sid && x.form_id === form.form_id);
     let state: StatusState = "none";
     if (done.has(sid) || o?.state === "confirmed" || o?.state === "done") state = "done";
     else if (o?.state === "claimed") state = "claimed";
-    out.push({ form, state });
+    // ยกเลิกได้เฉพาะที่ตัวเองกดเอง (ไม่ใช่ที่ระบบเจอในชีต หรือกรรมการยืนยันให้)
+    const undo = !done.has(sid) && !!o && o.source.startsWith("self_claim") && (o.state === "claimed" || o.state === "confirmed");
+    out.push({ form, state, undo });
   }
   return out;
 }

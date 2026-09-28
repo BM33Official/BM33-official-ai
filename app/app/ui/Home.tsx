@@ -76,7 +76,7 @@ export default function Home({
   data, active, picture, openAnn, go, claimForm, focus, onFocused,
 }: {
   data: AppData; active: boolean; picture: string;
-  openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string) => Promise<void>;
+  openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string, undo?: boolean) => Promise<void>;
   focus?: string; onFocused?: () => void;
 }) {
   const todoRef = useRef<HTMLElement>(null);
@@ -108,8 +108,10 @@ export default function Home({
 
   // สิ่งที่ต้องกรอก
   const stateOf = (id: string) => mine.forms.find((f) => f.id === id)?.state ?? "none";
+  const undoOf = (id: string) => !!mine.forms.find((f) => f.id === id)?.undo;
   const forms = [...board.forms].sort((a, b) => (a.deadline_at || "9").localeCompare(b.deadline_at || "9"));
-  const todo = forms.filter((f) => stateOf(f.id) !== "done");
+  const todo = forms.filter((f) => stateOf(f.id) !== "done" && !f.closed);
+  const ended = forms.filter((f) => stateOf(f.id) !== "done" && f.closed); // ปิดรับแล้ว (โชว์อีก 1 วันแล้วหายเอง)
   const done = forms.filter((f) => stateOf(f.id) === "done");
 
   const owe = fees.months.length > 0 && fees.outstanding > 0;
@@ -179,13 +181,14 @@ export default function Home({
         <section className="panel" ref={todoRef}>
           <div className="ph">
             <h2>สิ่งที่ต้องกรอก {todo.length > 0 && <span className="cnt red">{todo.length}</span>}</h2>
-            <span className="progress-mini"><i style={{ width: `${(done.length / forms.length) * 100}%` }} /></span>
-            <span className="ph-note">{done.length}/{forms.length}</span>
+            <span className="progress-mini"><i style={{ width: `${(done.length / Math.max(1, forms.length - ended.length)) * 100}%` }} /></span>
+            <span className="ph-note">{done.length}/{forms.length - ended.length}</span>
           </div>
           {todo.length === 0 && <div className="p-empty ok">🎉 กรอกครบทุกอย่างแล้ว</div>}
-          {todo.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} now={now} onClaim={() => claimForm(f.id)} preview={!!data.preview} />)}
+          {todo.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} undo={undoOf(f.id)} now={now} onClaim={() => claimForm(f.id)} onUnclaim={() => claimForm(f.id, true)} preview={!!data.preview} />)}
+          {ended.map((f) => <TodoRow key={f.id} f={f} state={stateOf(f.id)} undo={false} now={now} onClaim={async () => {}} onUnclaim={async () => {}} preview />)}
           {done.length > 0 && <button className="p-link" onClick={() => setShowDone((v) => !v)}>✓ กรอกแล้ว {done.length} {showDone ? "▴" : "▾"}</button>}
-          {showDone && done.map((f) => <TodoRow key={f.id} f={f} state="done" now={now} onClaim={async () => {}} preview />)}
+          {showDone && done.map((f) => <TodoRow key={f.id} f={f} state="done" undo={undoOf(f.id)} now={now} onClaim={async () => {}} onUnclaim={() => claimForm(f.id, true)} preview={!!data.preview} />)}
         </section>
       )}
 
@@ -246,23 +249,40 @@ function AnnRow({ a, now, onOpen }: { a: Ann; now: number; onOpen: () => void })
   );
 }
 
-function TodoRow({ f, state, now, onClaim, preview }: { f: AppData["board"]["forms"][number]; state: string; now: number; onClaim: () => Promise<void>; preview: boolean }) {
+function TodoRow({ f, state, undo, now, onClaim, onUnclaim, preview }: { f: AppData["board"]["forms"][number]; state: string; undo: boolean; now: number; onClaim: () => Promise<void>; onUnclaim: () => Promise<void>; preview: boolean }) {
   const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState(false);
   const isDone = state === "done";
+  const ticked = isDone || state === "claimed";
+  // ติ๊กแล้วแตะอีกที = ถามก่อนยกเลิก (เฉพาะที่กดเอง) — กันกดพลาด แต่ไม่ล็อกตาย
+  const canTap = !preview && !busy && (!ticked || undo);
   return (
-    <div className={`trow ${isDone ? "done" : ""}`}>
-      <button className={`check ${isDone ? "on" : state === "claimed" ? "half" : ""}`} disabled={isDone || state === "claimed" || preview || busy} aria-label="ฉันกรอกแล้ว"
-        onClick={async () => { haptic(); setBusy(true); await onClaim(); setBusy(false); }}>
-        {isDone || state === "claimed" ? <ICheck width={14} height={14} /> : null}
+    <div className={`trow ${isDone || f.closed ? "done" : ""}`}>
+      <button className={`check ${isDone ? "on" : state === "claimed" ? "half" : ""}`} disabled={!canTap} aria-label={ticked ? "ยกเลิกกรอกแล้ว" : "ฉันกรอกแล้ว"}
+        onClick={async () => {
+          haptic();
+          if (ticked) { setAsk((v) => !v); return; }
+          setBusy(true); await onClaim(); setBusy(false);
+        }}>
+        {ticked ? <ICheck width={14} height={14} /> : null}
       </button>
       <span className="a-b">
         <span className="a-t clamp2">{f.name}</span>
-        <span className="a-m">
-          {state === "claimed" ? <span className="chip violet">รอกรรมการยืนยัน</span> : !isDone && f.deadline_at ? <DeadlineChip iso={f.deadline_at} now={now} prefix="ปิด " /> : null}
-          {!isDone && state !== "claimed" && <span>ทำแล้วแตะวงกลม</span>}
-        </span>
+        {ask ? (
+          <span className="a-m undo-ask">
+            <span>ยังไม่ได้กรอกใช่ไหม?</span>
+            <button className="chip urgent press" disabled={busy} onClick={async () => { haptic(); setBusy(true); await onUnclaim(); setBusy(false); setAsk(false); }}>ยกเลิกติ๊ก</button>
+            <button className="chip press" onClick={() => setAsk(false)}>ไม่</button>
+          </span>
+        ) : (
+          <span className="a-m">
+            {f.closed && !isDone ? <span className="chip">ปิดรับแล้ว</span> : state === "claimed" ? <span className="chip violet">รอกรรมการยืนยัน</span> : !isDone && f.deadline_at ? <DeadlineChip iso={f.deadline_at} now={now} prefix="ปิด " /> : null}
+            {!ticked && !f.closed && <span>ทำแล้วแตะวงกลม</span>}
+            {ticked && undo && <span>แตะวงกลมเพื่อยกเลิก</span>}
+          </span>
+        )}
       </span>
-      {!isDone && f.link && <a className="go-btn" href={f.link} target="_blank" rel="noopener noreferrer">กรอก</a>}
+      {f.link && !(f.closed && !ticked) && <a className={`go-btn ${ticked ? "ghost" : ""}`} href={f.link} target="_blank" rel="noopener noreferrer">{ticked ? "เปิด" : "กรอก"}</a>}
     </div>
   );
 }

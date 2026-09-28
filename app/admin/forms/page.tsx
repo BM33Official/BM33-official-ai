@@ -71,8 +71,7 @@ export default async function Forms() {
           <div className="who-col">
             <div className="who-h"><span className="dot red" />ยังไม่กรอก <b>{todo.length}</b>
               {f.status !== "closed" && todo.length > 0 && !late && (
-                <ActButton action="form.remind" payload={{ id: f.form_id }} className="btn-sm btn-primary" confirmText={`ร่างข้อความเตือน ${todo.length} คนที่ยังไม่กรอก? (ไปรออนุมัติก่อน ยังไม่ส่ง)`}
-                  doneText="ร่างแล้ว #{code} → รออนุมัติ"><Bell size={14} /> เตือน {todo.length} คนนี้</ActButton>
+                <ActButton action="form.remind" payload={{ id: f.form_id }} className="btn-sm btn-primary" doneText="เพิ่มเข้า “เตือนรวม” #{code} แล้ว → ไปกดส่งที่ รออนุมัติ"><Bell size={14} /> เตือน {todo.length} คนนี้</ActButton>
               )}
             </div>
             <Names people={todo} tone="red" />
