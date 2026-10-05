@@ -1,6 +1,6 @@
 // วิชาการ & Red Zone — ① ดูโซนทั้งรุ่นในแวบเดียว ② ตรวจจำข้อสอบด้วย AI ③ ส่งข้อความ/สุ่มคน (ของเสริม)
 import Link from "next/link";
-import { GraduationCap, Flame, ScanSearch, MessageCircle, Dices, ListOrdered, Plus, Hand } from "lucide-react";
+import { GraduationCap, Flame, ScanSearch, MessageCircle, Dices, ListOrdered, Plus, Hand, ShieldCheck } from "lucide-react";
 import { requireRole } from "@/lib/bc/auth";
 import { readExams, ranking } from "@/lib/bc/academic";
 import { readDraws, drawPhase, drawIds } from "@/lib/bc/draws";
@@ -15,6 +15,7 @@ import MarkGrid from "../ui/MarkGrid";
 import AcademicBroadcast from "../ui/AcademicBroadcast";
 import LiveSync from "../ui/LiveSync";
 import RecallWizard from "../ui/RecallWizard";
+import RedZoneSwitch from "../ui/RedZoneSwitch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,12 +55,25 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
 
   return (
     <div className="wrap">
-      <Head icon={GraduationCap} tone="purple" title="วิชาการ & Red Zone" sub="สร้างข้อสอบ → AI หรือคุณติ๊กว่าใครยังไม่ได้กรอก → ส่งเตือนได้ทันที · ค้าง 1 = เฝ้าระวัง · 2 = ใกล้ · 3 ขึ้นไป = Red Zone" />
+      <Head icon={GraduationCap} tone="purple" title={rank.enabled ? "วิชาการ & Red Zone" : "วิชาการ"} sub={rank.enabled ? "สร้างข้อสอบ → AI หรือคุณติ๊กว่าใครยังไม่ได้กรอก → ส่งเตือนได้ทันที · ค้าง 1 = เฝ้าระวัง · 2 = ใกล้ · 3 ขึ้นไป = Red Zone" : "สร้างข้อสอบ → AI หรือคุณติ๊กว่าใครยังไม่ได้กรอก → ส่งเตือนได้ทันที · Red Zone ปิดอยู่ (ทุกคน Green Zone)"} />
       <div style={{ marginTop: -8, marginBottom: 14 }}><LiveSync /></div>
 
+      {!rank.enabled ? (
+        <div className="card green-zone">
+          <div className="card-h">
+            <h3 className="row" style={{ gap: 10, margin: 0 }}><Sq icon={ShieldCheck} tone="green" /> Green Zone · ทุกคนเริ่มต้นใหม่</h3>
+            <RedZoneSwitch on={false} canEdit={role === "admin"} />
+          </div>
+          <div className="dots zone-dots">
+            {students.map((s) => <span key={s.sid} className="d green" title={`${s.nickname} · Green Zone`}>{s.no}</span>)}
+          </div>
+          <div className="hint" style={{ marginTop: 10 }}>ปิด Red Zone อยู่ — เพื่อนทุกคนเห็น “Green Zone” ในแอป และกดดูประวัติการเรียกเก็บเงินรุ่น/งานวิชาการของตัวเองได้ · ตรวจข้อสอบ ติ๊กคนที่ยังไม่ได้กรอก และส่งตามเตือนได้ตามปกติ (ไม่จัดระดับ){role === "admin" ? " · เปิดเมื่อพร้อมด้วยสวิตช์ด้านบน" : ""}</div>
+        </div>
+      ) : (
       <div className="card">
         <div className="card-h">
           <h3 className="row" style={{ gap: 10, margin: 0 }}><Sq icon={Flame} tone="red" /> Red Zone ตอนนี้</h3>
+          {role === "admin" && <RedZoneSwitch on canEdit />}
           <div className="row" style={{ gap: 18 }}>
             <span><span className="bignum" style={{ color: "var(--red-ink)", fontSize: 30 }}>{counts.red}</span> <span className="hint">คน</span></span>
             <span><span className="bignum" style={{ color: "var(--orange-ink)", fontSize: 30 }}>{counts.close}</span> <span className="hint">ใกล้</span></span>
@@ -78,6 +92,7 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
         </div>
         <div className="hint" style={{ marginTop: 8 }}>นับ “ค้าง” = ข้อสอบที่ยังไม่ได้กรอก + เดือนเงินรุ่นที่เลยกำหนด · ค้าง 1 = เฝ้าระวัง · 2 = ใกล้ · 3 ขึ้นไป = Red Zone · เพื่อนแต่ละคนเห็นเฉพาะของตัวเองในแอป (แตะแล้วเห็นว่าค้างข้อสอบไหน ไปกรอกหรือกด “ยอมโดน” ได้)</div>
       </div>
+      )}
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={ScanSearch} tone="blue" /> ตรวจจำข้อสอบ</h2>
       <div className="seg" style={{ maxWidth: "100%", overflowX: "auto", flexWrap: "nowrap" }}>
@@ -98,13 +113,13 @@ export default async function Academic({ searchParams }: { searchParams: { exam?
             </div>
           </details>
           {/* ตามเตือนเฉพาะข้อสอบนี้ — ตัวเลขอัปเดตทันทีหลังบันทึก */}
-          <div style={{ marginTop: 12 }}><AcademicBroadcast key={selected.exam_id} exams={examsLite} lockExam={selected.exam_id} version={initial.join(",") + "|" + accepted.join(",")} /></div>
+          <div style={{ marginTop: 12 }}><AcademicBroadcast key={selected.exam_id} exams={examsLite} lockExam={selected.exam_id} version={initial.join(",") + "|" + accepted.join(",")} zoneOn={rank.enabled} /></div>
         </>
       )}
       {exams.length === 0 && searchParams?.exam !== "new" && <div className="hint" style={{ marginTop: 8 }}>ยังไม่มีข้อสอบ — ตั้งชื่อด้านบนแล้วกดสร้าง</div>}
 
-      <h2 className="row" style={{ gap: 10 }}><Sq icon={MessageCircle} tone="line" /> ส่งข้อความถึงเพื่อน <span className="hint" style={{ fontWeight: 500 }}>เลือก 1 ใน 3 แบบ · กดส่งแล้วถึงเพื่อนทันที</span></h2>
-      <AcademicBroadcast exams={examsLite} />
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={MessageCircle} tone="line" /> ส่งข้อความถึงเพื่อน <span className="hint" style={{ fontWeight: 500 }}>{rank.enabled ? "เลือก 1 ใน 3 แบบ" : "เลือก 1 ใน 2 แบบ"} · กดส่งแล้วถึงเพื่อนทันที</span></h2>
+      <AcademicBroadcast exams={examsLite} zoneOn={rank.enabled} />
 
       <details className="more" style={{ marginTop: 22 }}>
         <summary><Dices size={16} /> สุ่มผู้เข้าร่วมกิจกรรม</summary>

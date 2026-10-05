@@ -1,10 +1,12 @@
 "use client";
 // "เตือนรวม" — ติ๊กเรื่องที่จะเตือน → เพื่อนแต่ละคนได้ข้อความเดียว (เฉพาะเรื่องที่ตัวเองยังไม่ทำ) + การ์ดลิงก์
 import { useMemo, useState } from "react";
-import { Send, X, Users, MessageCircle, Plus, Layers } from "lucide-react";
+import { Send, X, Users, MessageCircle, Plus, Layers, CalendarClock, Check } from "lucide-react";
 import { act } from "./api";
+import { isoToLocalInput, localInputToIso } from "./dt";
+import { relativeTh, thDateTime } from "@/lib/time";
 
-export type BatchEntry = { key: string; kind: "form" | "deadline" | "exam" | "news"; title: string; when: string; forAll: boolean; ids: string[]; links: string[] };
+export type BatchEntry = { key: string; kind: "form" | "deadline" | "exam" | "news"; title: string; when: string; forAll: boolean; ids: string[]; links: string[]; at?: string; event?: string };
 type Props = { id: string; code: string; entries: BatchEntry[]; extra: BatchEntry[]; all: string[]; nick: Record<string, string> };
 
 const KIND = {
@@ -22,6 +24,13 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
   const [msg, setMsg] = useState("");
   const [gone, setGone] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+
+  // แก้วันแล้ว: อัปเดตการ์ดนี้ทันที (ต้นทาง — ประกาศ/สิ่งที่ต้องกรอก/ตารางสอบ — ถูกแก้ที่ server แล้ว)
+  function onDates(key: string, at: string, event: string) {
+    setEntries((l) => l.map((e) => (e.key === key ? { ...e, at, event, when: at ? `${relativeTh(at)} · ${thDateTime(at)}` : "" } : e)));
+    setEditing(null);
+  }
 
   const picked = entries.filter((e) => on.has(e.key));
   // ใครได้อะไรบ้าง (คำนวณในเครื่อง — ตอนกดส่ง server คำนวณสดอีกรอบ)
@@ -73,14 +82,22 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
 
         <div className="batch-list">
           {entries.map((e) => (
-            <label key={e.key} className={`batch-it ${on.has(e.key) ? "on" : ""}`}>
-              <input type="checkbox" checked={on.has(e.key)} onChange={() => toggle(e.key)} />
-              <span className="batch-em" style={{ background: KIND[e.kind].color }}>{KIND[e.kind].em}</span>
-              <span className="batch-b">
-                <b>{e.title}</b>
-                <small>{KIND[e.kind].th}{e.when ? ` · ${e.when}` : ""} · {e.forAll ? `ทุกคน (${all.length})` : `ยังไม่ทำ ${e.ids.length} คน`}</small>
-              </span>
-            </label>
+            <div key={e.key} className="batch-wrap">
+              <label className={`batch-it ${on.has(e.key) ? "on" : ""}`}>
+                <input type="checkbox" checked={on.has(e.key)} onChange={() => toggle(e.key)} />
+                <span className="batch-em" style={{ background: KIND[e.kind].color }}>{KIND[e.kind].em}</span>
+                <span className="batch-b">
+                  <b>{e.title}</b>
+                  <small>{KIND[e.kind].th}{e.when ? ` · ${e.when}` : ""}{e.event && e.kind !== "exam" ? ` · งาน ${thDateTime(e.event)}` : ""} · {e.forAll ? `ทุกคน (${all.length})` : `ยังไม่ทำ ${e.ids.length} คน`}</small>
+                </span>
+                {id !== "demo" && (
+                  <button type="button" className="btn btn-sm btn-ghost batch-date" title="แก้เดดไลน์ / วันงาน" onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); setEditing(editing === e.key ? null : e.key); }}>
+                    <CalendarClock size={15} /> แก้วัน
+                  </button>
+                )}
+              </label>
+              {editing === e.key && <DateEditor entry={e} onDone={onDates} />}
+            </div>
           ))}
           {entries.length === 0 && <div className="hint">ยังไม่มีเรื่องในรายการ — เพิ่มจากด้านล่าง</div>}
         </div>
@@ -125,6 +142,38 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// แก้เดดไลน์ / วันงาน ของเรื่องนี้ — บันทึกไปที่ประกาศจริง (แอปเห็นวันใหม่ทันที · ข้อความเตือนใช้วันใหม่ตอนกดส่ง)
+function DateEditor({ entry, onDone }: { entry: BatchEntry; onDone: (key: string, at: string, event: string) => void }) {
+  const exam = entry.kind === "exam";
+  const hasAnn = entry.key.startsWith("ann:") || entry.key.startsWith("form:");
+  const [dl, setDl] = useState(isoToLocalInput(exam ? "" : entry.at ?? ""));
+  const [ev, setEv] = useState(isoToLocalInput(entry.event ?? ""));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  async function save() {
+    setBusy(true); setErr("");
+    const payload: Record<string, unknown> = { key: entry.key };
+    if (!exam) payload.deadline = localInputToIso(dl);
+    if (exam || hasAnn) payload.event = localInputToIso(ev);
+    const r = await act("outbox.setDate", payload);
+    setBusy(false);
+    if (!r.ok) { setErr(String(r.error ?? "บันทึกไม่ได้")); return; }
+    onDone(entry.key, exam ? localInputToIso(ev) : localInputToIso(dl), localInputToIso(ev));
+  }
+  return (
+    <div className="batch-edit">
+      {!exam && (
+        <label>เดดไลน์<input type="datetime-local" value={dl} onChange={(e) => setDl(e.target.value)} /></label>
+      )}
+      {(exam || hasAnn) && (
+        <label>{exam ? "วันเวลาสอบ" : "วันงาน (ไม่บังคับ)"}<input type="datetime-local" value={ev} onChange={(e) => setEv(e.target.value)} /></label>
+      )}
+      <button className="btn btn-sm btn-primary" onClick={save} disabled={busy}><Check size={14} /> {busy ? "กำลังบันทึก…" : "บันทึก + อัปเดตประกาศ"}</button>
+      {err && <span className="hint" style={{ color: "var(--red-ink)" }}>{err}</span>}
     </div>
   );
 }

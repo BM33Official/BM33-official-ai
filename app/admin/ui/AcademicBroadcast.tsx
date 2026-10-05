@@ -23,7 +23,7 @@ const DEFAULTS: Record<Mode, string> = {
 const TOKENS: Record<Mode, string> = { invite: "{ข้อสอบ}", chase: "{ชื่อเล่น} {จำนวน} {ข้อสอบ}", zone: "{ชื่อเล่น} {ระดับ} {ค้าง}" };
 const toISO = (local: string) => (local ? new Date(local).toISOString() : "");
 
-export default function AcademicBroadcast({ exams, lockExam, version = "" }: { exams: ExamLite[]; lockExam?: string; version?: string }) {
+export default function AcademicBroadcast({ exams, lockExam, version = "", zoneOn = true }: { exams: ExamLite[]; lockExam?: string; version?: string; zoneOn?: boolean }) {
   const router = useRouter();
   const compact = !!lockExam;
   const [mode, setMode] = useState<Mode>("chase");
@@ -76,7 +76,7 @@ export default function AcademicBroadcast({ exams, lockExam, version = "" }: { e
     <div className={`card ab ${compact ? "ab-compact" : ""}`}>
       {!compact && (
         <div className="ab-modes">
-          {MODES.map((m) => (
+          {MODES.filter((m) => zoneOn || m.key !== "zone").map((m) => (
             <button key={m.key} className={`ab-mode ${mode === m.key ? "on" : ""}`} style={{ ["--t" as string]: m.tone }} onClick={() => changeMode(m.key)}>
               <span className="ab-ic"><m.icon size={18} /></span>
               <span className="ab-mt"><b>{m.title}</b><small>{m.when}</small></span>

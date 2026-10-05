@@ -139,6 +139,12 @@ export async function overdueFees(now = Date.now()): Promise<Map<string, string[
   return out;
 }
 
+// สวิตช์หลัก Red Zone — ปิด ("0") = ทุกคนอยู่ Green Zone (ยังเก็บข้อมูลข้อสอบ/เงินรุ่นตามปกติ แค่ไม่จัดระดับ)
+export async function redZoneEnabled(): Promise<boolean> {
+  const cfg = await getConfig();
+  return (cfg.red_zone_enabled ?? "").trim() !== "0";
+}
+
 export async function redZoneFeeRule(): Promise<{ on: boolean; weight: number }> {
   const cfg = await getConfig();
   const w = Number(cfg.red_zone_fee_weight);
@@ -165,8 +171,8 @@ export function levelFor(strikes: number): ZoneLevel {
   return strikes >= ZONE_RED ? "red" : strikes === 2 ? "close" : strikes === 1 ? "watch" : "safe";
 }
 
-export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number; fees: { on: boolean; weight: number } }> {
-  const [roster, members, exams, fees, carry, rule] = await Promise.all([readRoster(), verifiedMembers(), readExams(), overdueFees().catch(() => new Map<string, string[]>()), feeCarry(), redZoneFeeRule()]);
+export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; size: number; threshold: number; fees: { on: boolean; weight: number }; enabled: boolean }> {
+  const [roster, members, exams, fees, carry, rule, enabled] = await Promise.all([readRoster(), verifiedMembers(), readExams(), overdueFees().catch(() => new Map<string, string[]>()), feeCarry(), redZoneFeeRule(), redZoneEnabled()]);
   const lineById = new Map(members.map((m) => [digits(m.matched_student_id), m.line_user_id]));
   const ordered = examOrder(exams);
   const weight = new Map(ordered.map((e, i) => [e.exam_id, Math.max(0.35, RECENCY_DECAY ** i)]));
@@ -188,10 +194,11 @@ export async function ranking(): Promise<{ rows: RankRow[]; redzoneMin: number; 
   const strikes = (r: { misses: number; feeMisses: number }) => r.misses + r.feeMisses;
   const sorted = [...base].sort((a, b) => b.score - a.score || strikes(b) - strikes(a));
   const rows: RankRow[] = sorted.map((r) => {
-    const level = levelFor(strikes(r));
-    return { ...r, level, redzone: level === "red", distanceToRed: Math.max(0, ZONE_RED - strikes(r)) };
+    // ปิด Red Zone = ทุกคน "safe" (Green Zone) · รายชื่อข้อสอบที่ค้างยังอยู่ (ใช้ตามเตือนได้ตามปกติ)
+    const level = enabled ? levelFor(strikes(r)) : "safe";
+    return { ...r, level, redzone: level === "red", distanceToRed: enabled ? Math.max(0, ZONE_RED - strikes(r)) : ZONE_RED };
   });
-  return { rows, redzoneMin: ZONE_RED, size: rows.filter((r) => r.redzone).length, threshold: ZONE_RED, fees: rule };
+  return { rows, redzoneMin: ZONE_RED, size: rows.filter((r) => r.redzone).length, threshold: ZONE_RED, fees: rule, enabled };
 }
 
 // ── ส่งข้อความถึงเพื่อน — 3 แบบ ชัด ๆ ─────────────────────────────────────────

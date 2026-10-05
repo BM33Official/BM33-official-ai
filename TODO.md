@@ -1,3 +1,18 @@
+# BM33 v7 — launch round (2026-10-05, before classmates scan on 2026-10-06)
+- [x] **Red Zone master switch** (config `red_zone_enabled`, "0" = off): everyone + control center show **Green Zone**; tap → personal **ประวัติ** sheet (fee charges + academic exams, `mine.history`) · Settings / วิชาการ have the switch (admin) · academic "zone" message mode hidden while off · AI/intents say Green Zone
+- [x] Fee charges ("เรียกเก็บเงินรุ่น") at top of การเงิน: monthly **or other purpose** (key `YYYY-MM-xxxx`, e.g. ค่าเสื้อ) + **pay link + button label** → button in app (ของฉัน + ประวัติ) and in finance reminders (SCHEMA v3.4: `link, link_label, created_at`)
+- [x] Fortune sound on phones: `unlockAudio()` inside the tap (cutscene used to start audio after rAF/font await → suspended) + iOS `audioSession="playback"` + silent `<audio>` (plays with the silent switch on)
+- [x] Groups: config `learn_groups` ("*" = every group the bot is in, overrides env LEARN_GROUP_IDS) · `known_groups_json` from join/leave/messages · Settings → กลุ่ม LINE ของบอท (name, members, learning, **ให้บอทออก**) + committee-registered check (only registered committee get announcements captured)
+- [x] Draw results send directly (no admin approval) — academic & finance were already direct
+- [x] รออนุมัติ: "แก้วัน" per เตือนรวม item → `outbox.setDate` updates the announcement / form (+ linked announcement) / uni exam
+- [x] App ประกาศ: sort ใกล้ถึง (pinned · within 7 days · later · general) / ล่าสุด · admin "sets" collapse to one row · passed (deadline or event +1 day, undated after 21 days) move to tiny "ที่ผ่านมาแล้ว" list (`board.past`)
+- [x] Control center ประกาศ: เลือกหลายอัน → จัดเป็นชุด / ออกจากชุด / ปักหมุด / ซ่อน / ขึ้นแอป / หมวด / ส่ง LINE รวม · rename/ungroup set · ↑↓ order (`announce.bulk`, `bulkUpdateAnnouncements`, cols `group_name, sort_order`)
+- [x] ข้อความ LINE ขั้นสูง: upload image (client shrinks ≤1MB) → `BC_media` chunks → `/api/media/<id>.jpg` (public, immutable cache) · image can be attached to card/text too
+- [x] AI page: คำถามล่าสุด sort (ล่าสุด/เก่าสุด/ตอบไม่ได้ก่อน/ตามคน) + filter + search (400 rows)
+- [x] typecheck · build · `scripts/test-flows.ts` 31/31 · screenshots (app + admin)
+- [ ] **User:** run `npx tsx scripts/reset-launch.ts ../backups/reset-before-launch.json --apply` (backs up then wipes trial fee months/payments/exams/slip, sets red_zone_enabled=0, learn_groups=*) — blocked for Claude by the permission check
+- [ ] **User (tomorrow):** add bot to the main group → Settings → กลุ่ม LINE ของบอท → check it shows "เก็บอยู่" → press "ให้บอทออก" on the beta group · ask ใบเตย, พิมพ์, แบง to register with the bot
+
 # BM33 v6 — วิชาการ / การเงิน round (2026-09-28)
 - [x] Red Zone levels by count of "ค้าง" (unfilled exams + overdue/carried fee months): 1 เฝ้าระวัง · 2 ใกล้ · 3+ Red Zone — still sorted by score (`levelFor`, `ZONE_RED`)
 - [x] One list per exam "ยังไม่ได้กรอก" (not_memorized_ids = not_filled_ids) — MarkGrid single grid, AI saveCheck writes both · `accepted_ids` column (SCHEMA v3.3)

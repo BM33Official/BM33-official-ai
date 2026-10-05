@@ -62,22 +62,93 @@ export const CAT: Record<string, { em: string; c1: string; c2: string }> = {
 export const catOf = (c: string) => CAT[c] ?? CAT["ทั่วไป"];
 type Ann = AppData["board"]["announcements"][number];
 
-// จัดกลุ่มประกาศตามวันที่ลง (ปักหมุดขึ้นก่อน)
-function dateGroup(iso: string, now: number): string {
-  const d = -dayDiff(iso, now);
-  if (d <= 0) return "วันนี้";
-  if (d === 1) return "เมื่อวาน";
-  if (d < 7) return "สัปดาห์นี้";
-  return "ก่อนหน้านี้";
+// วันที่สำคัญของประกาศ = เดดไลน์ (ถ้ามี) ไม่งั้นวันงาน
+const keyDate = (a: Ann) => a.deadline_at || a.event_at || "";
+const SOON_DAYS = 7;
+
+// รายการประกาศ: แถวเดี่ยว หรือ "ชุด" ที่กรรมการจัดไว้ (แตะเพื่อกาง)
+type Entry = { kind: "one"; a: Ann } | { kind: "set"; name: string; list: Ann[] };
+function entriesOf(list: Ann[]): Entry[] {
+  const out: Entry[] = [];
+  const seen = new Map<string, Entry & { kind: "set" }>();
+  for (const a of list) {
+    if (!a.group) { out.push({ kind: "one", a }); continue; }
+    const hit = seen.get(a.group);
+    if (hit) hit.list.push(a);
+    else { const e = { kind: "set" as const, name: a.group, list: [a] }; seen.set(a.group, e); out.push(e); }
+  }
+  for (const e of seen.values()) e.list.sort((x, y) => (x.order || 9999) - (y.order || 9999) || (keyDate(x) || "9").localeCompare(keyDate(y) || "9"));
+  return out;
 }
-const GROUP_ORDER = ["ปักหมุด", "วันนี้", "เมื่อวาน", "สัปดาห์นี้", "ก่อนหน้านี้"];
+const firstDate = (e: Entry) => (e.kind === "one" ? keyDate(e.a) : e.list.map(keyDate).filter(Boolean).sort()[0] ?? "");
+
+function AnnFeed({ list, sort, now, openAnn }: { list: Ann[]; sort: "due" | "new"; now: number; openAnn: (id: string) => void }) {
+  const [more, setMore] = useState(false);
+  const sections = useMemo(() => {
+    if (sort === "new") {
+      const all = entriesOf([...list].sort((a, b) => b.created_at.localeCompare(a.created_at)));
+      return [{ title: "", items: all }];
+    }
+    const pinned = list.filter((a) => a.pinned);
+    const rest = list.filter((a) => !a.pinned);
+    const dated = entriesOf(rest.filter((a) => keyDate(a))).sort((a, b) => firstDate(a).localeCompare(firstDate(b)));
+    const soon = dated.filter((e) => dayDiff(firstDate(e), now) <= SOON_DAYS);
+    const later = dated.filter((e) => dayDiff(firstDate(e), now) > SOON_DAYS);
+    const plain = entriesOf(rest.filter((a) => !keyDate(a)).sort((a, b) => b.created_at.localeCompare(a.created_at)));
+    return [
+      { title: "ปักหมุด", items: entriesOf(pinned) },
+      { title: "ใกล้ถึง · ภายใน 7 วัน", items: soon },
+      { title: "อีกนาน", items: later },
+      { title: "ข่าวทั่วไป", items: plain },
+    ].filter((x) => x.items.length);
+  }, [list, sort, now]);
+  const total = sections.reduce((n, x) => n + x.items.length, 0);
+  let budget = more ? Infinity : 7;
+  if (list.length === 0) return <div className="p-empty">ยังไม่มีประกาศตอนนี้</div>;
+  return (
+    <>
+      {sections.map((sec) => {
+        if (budget <= 0) return null;
+        const items = sec.items.slice(0, budget);
+        budget -= items.length;
+        return (
+          <div key={sec.title || "all"}>
+            {sec.title && <div className="grp">{sec.title}</div>}
+            {items.map((e) => (e.kind === "one"
+              ? <AnnRow key={e.a.id} a={e.a} now={now} onOpen={() => openAnn(e.a.id)} />
+              : <SetRow key={`set:${e.name}`} name={e.name} list={e.list} now={now} openAnn={openAnn} />))}
+          </div>
+        );
+      })}
+      {total > 7 && <button className="p-link" onClick={() => { haptic(); setMore((v) => !v); }}>{more ? "ย่อ ▴" : `ดูทั้งหมด ${list.length} เรื่อง ▾`}</button>}
+    </>
+  );
+}
+
+function SetRow({ name, list, now, openAnn }: { name: string; list: Ann[]; now: number; openAnn: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const next = list.map(keyDate).filter((d) => d && new Date(d).getTime() > now).sort()[0] ?? "";
+  return (
+    <div className={`setrow ${open ? "open" : ""}`}>
+      <button className="arow press set-head" onClick={() => { haptic(); setOpen((v) => !v); }}>
+        <span className="a-ic set-ic">{list.length}</span>
+        <span className="a-b">
+          <span className="a-t clamp2">{name}</span>
+          <span className="a-m">{next ? <DeadlineChip iso={next} now={now} prefix="ถัดไป " /> : null}<span>{list.length} เรื่องในชุดนี้</span></span>
+        </span>
+        <span className="set-chev">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && <div className="set-body">{list.map((a) => <AnnRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} />)}</div>}
+    </div>
+  );
+}
 
 export default function Home({
-  data, active, picture, openAnn, go, claimForm, focus, onFocused,
+  data, active, picture, openAnn, go, claimForm, focus, onFocused, openHistory,
 }: {
   data: AppData; active: boolean; picture: string;
   openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string, undo?: boolean) => Promise<void>;
-  focus?: string; onFocused?: () => void;
+  focus?: string; onFocused?: () => void; openHistory: () => void;
 }) {
   const todoRef = useRef<HTMLElement>(null);
   const annRef = useRef<HTMLElement>(null);
@@ -101,11 +172,8 @@ export default function Home({
   const fees = mine.fees;
   const zone = mine.zone;
 
-  // ประกาศ: ปักหมุด -> ใหม่สุด แล้วแบ่งตามวันที่
-  const all = useMemo(() => [...board.announcements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.created_at.localeCompare(a.created_at)), [board.announcements]);
-  const shown = more ? all : all.slice(0, 6);
-  const groups = GROUP_ORDER.map((g) => ({ g, list: shown.filter((a) => (a.pinned ? "ปักหมุด" : dateGroup(a.created_at, now)) === g) })).filter((x) => x.list.length);
-
+  const [annSort, setAnnSort] = useState<"due" | "new">("due");
+  const [showPast, setShowPast] = useState(false);
   // สิ่งที่ต้องกรอก
   const stateOf = (id: string) => mine.forms.find((f) => f.id === id)?.state ?? "none";
   const undoOf = (id: string) => !!mine.forms.find((f) => f.id === id)?.undo;
@@ -147,10 +215,17 @@ export default function Home({
           <span className="al-ic"><IWallet width={18} height={18} /></span>
           <span className="al-t"><small>เงินรุ่น</small><b>{fees.months.length === 0 ? "ยังไม่เปิดรอบ" : owe ? `ค้าง ${fees.outstanding.toLocaleString()} ฿` : "จ่ายครบแล้ว"}</b>{owe && <em>แตะเพื่อจ่าย/ส่งสลิป</em>}</span>
         </button>
-        <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
-          <span className="al-ic"><IShield width={18} height={18} /></span>
-          <span className="al-t"><small>Red Zone · ค้าง {zone.strikes}/3</small><b>{zone.title}</b>{zone.strikes > 0 && <em>แตะเพื่อดูว่าค้างอะไร</em>}</span>
-        </button>
+        {zone.enabled ? (
+          <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
+            <span className="al-ic"><IShield width={18} height={18} /></span>
+            <span className="al-t"><small>Red Zone · ค้าง {zone.strikes}/3</small><b>{zone.title}</b>{zone.strikes > 0 && <em>แตะเพื่อดูว่าค้างอะไร</em>}</span>
+          </button>
+        ) : (
+          <button className="alert press green" onClick={openHistory}>
+            <span className="al-ic"><IShield width={18} height={18} /></span>
+            <span className="al-t"><small>สถานะของฉัน</small><b>Green Zone</b><em>แตะเพื่อดูประวัติ</em></span>
+          </button>
+        )}
       </div>
 
       {board.notice && <div className="notice"><span>📣</span><span className="selectable">{board.notice}</span></div>}
@@ -192,17 +267,22 @@ export default function Home({
         </section>
       )}
 
-      {/* ประกาศ — แบ่งตามวันที่ อ่านรวดเดียวจบ */}
+      {/* ประกาศ — ใกล้ถึงก่อน / อีกนาน / ทั่วไป (หรือเรียงล่าสุด) · ชุดที่กรรมการจัดไว้ = ก้อนเดียว · ที่ผ่านไปแล้วซ่อนไว้ */}
       <section className="panel" ref={annRef}>
-        <div className="ph"><h2>ประกาศ</h2><span className="ph-note">{board.announcements.length} เรื่อง</span></div>
-        {groups.map(({ g, list }) => (
-          <div key={g}>
-            <div className="grp">{g}</div>
-            {list.map((a) => <AnnRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} />)}
-          </div>
-        ))}
-        {all.length === 0 && <div className="p-empty">ยังไม่มีประกาศตอนนี้</div>}
-        {all.length > 6 && <button className="p-link" onClick={() => { haptic(); setMore((v) => !v); }}>{more ? "ย่อ ▴" : `ดูทั้งหมด ${all.length} เรื่อง ▾`}</button>}
+        <div className="ph">
+          <h2>ประกาศ</h2>
+          <span className="sort-pills">
+            <button className={annSort === "due" ? "on" : ""} onClick={() => { haptic(); setAnnSort("due"); }}>ใกล้ถึง</button>
+            <button className={annSort === "new" ? "on" : ""} onClick={() => { haptic(); setAnnSort("new"); }}>ล่าสุด</button>
+          </span>
+        </div>
+        <AnnFeed list={board.announcements} sort={annSort} now={now} openAnn={openAnn} />
+        {(board.past?.length ?? 0) > 0 && (
+          <>
+            <button className="past-link" onClick={() => { haptic(); setShowPast((v) => !v); }}>ที่ผ่านมาแล้ว {board.past!.length} {showPast ? "▴" : "›"}</button>
+            {showPast && <div className="past-list">{board.past!.map((a) => <AnnRow key={a.id} a={a} now={now} onOpen={() => openAnn(a.id)} past />)}</div>}
+          </>
+        )}
       </section>
 
       {board.daily && board.daily.items.length > 0 && (
@@ -230,17 +310,17 @@ export default function Home({
   );
 }
 
-function AnnRow({ a, now, onOpen }: { a: Ann; now: number; onOpen: () => void }) {
+function AnnRow({ a, now, onOpen, past }: { a: Ann; now: number; onOpen: () => void; past?: boolean }) {
   const c = catOf(a.category);
   const dl = a.deadline_at || a.event_at;
   const tone = a.deadline_at ? deadlineTone(a.deadline_at, now) : "info";
   return (
-    <button className={`arow press ${tone === "urgent" ? "hot" : ""}`} onClick={onOpen}>
+    <button className={`arow press ${tone === "urgent" && !past ? "hot" : ""} ${past ? "past" : ""}`} onClick={onOpen}>
       <span className="a-ic" style={{ background: `linear-gradient(150deg, ${c.c1}, ${c.c2})` }}>{c.em}</span>
       <span className="a-b">
         <span className="a-t clamp2">{a.title}</span>
         <span className="a-m">
-          {dl ? <DeadlineChip iso={dl} now={now} prefix={a.deadline_at ? "ปิด " : ""} /> : null}
+          {past ? <span className="chip">{dl ? `ผ่านไปแล้ว · ${thDateTime(dl, false)}` : "ที่ผ่านมา"}</span> : dl ? <DeadlineChip iso={dl} now={now} prefix={a.deadline_at ? "ปิด " : ""} /> : null}
           <span>{a.author || "กรรมการรุ่น"} · {agoTh(a.created_at, now)}</span>
         </span>
       </span>

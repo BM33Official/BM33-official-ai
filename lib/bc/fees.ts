@@ -11,7 +11,15 @@ import { bkkDate, bkkDayKey, TH_MONTHS_SHORT } from "@/lib/time";
 export const PAID_KINDS = ["monthly", "yearly", "waived", "partial"];
 export type FeeState = "paid" | "yearly" | "waived" | "partial" | "unpaid" | "overdue" | "upcoming";
 
+// key ของรายการเรียกเก็บ: YYYY-MM = เงินรุ่นรายเดือน · YYYY-MM-xxxx = เรียกเก็บอื่น ๆ (ค่าเสื้อ ค่ากิจกรรม ฯลฯ)
+export const FEE_KEY = /^\d{4}-\d{2}(-[a-z0-9]{2,8})?$/;
+export const isMonthlyKey = (k: string) => /^\d{4}-\d{2}$/.test(k);
+export function newChargeKey(month: string): string {
+  return `${month}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 export function monthLabel(month: string): string {
+  if (!isMonthlyKey(month)) return month;
   const [y, m] = month.split("-").map(Number);
   if (!y || !m) return month;
   return `${TH_MONTHS_SHORT[m - 1]} ${String((y + 543) % 100).padStart(2, "0")}`;
@@ -19,29 +27,40 @@ export function monthLabel(month: string): string {
 
 export async function readFeeMonths(force = false): Promise<FeeMonth[]> {
   const rows = force ? await readKeyFresh<FeeMonth>("feeMonths") : await readKey<FeeMonth>("feeMonths");
-  return rows.filter((m) => /^\d{4}-\d{2}$/.test(m.month)).sort((a, b) => a.month.localeCompare(b.month));
+  return rows.filter((m) => FEE_KEY.test(m.month)).sort((a, b) => a.month.localeCompare(b.month));
 }
 export async function readPayments(force = false): Promise<Payment[]> {
   const rows = force ? await readKeyFresh<Payment>("payments") : await readKey<Payment>("payments");
   return rows.map((p) => ({ ...p, student_id: digits(p.student_id) }));
 }
 
-export async function upsertMonth(m: Partial<FeeMonth> & { month: string }): Promise<void> {
-  if (!/^\d{4}-\d{2}$/.test(m.month)) throw new Error("เดือนต้องเป็นรูปแบบ YYYY-MM");
-  await upsertWhere("feeMonths", (r) => String(r.month) === m.month, {
-    month: m.month,
-    label: m.label || monthLabel(m.month),
+// บันทึกรายการเรียกเก็บ · ไม่ส่ง key มา (other=true) = สร้างรายการใหม่ของเดือนนั้น (เช่น ค่าเสื้อรุ่น)
+export async function upsertMonth(m: Partial<FeeMonth> & { month: string; other?: boolean }): Promise<string> {
+  let key = String(m.month || "").trim();
+  if (m.other && isMonthlyKey(key)) key = newChargeKey(key);
+  if (!FEE_KEY.test(key)) throw new Error("เดือนต้องเป็นรูปแบบ YYYY-MM");
+  if (!isMonthlyKey(key) && !String(m.label ?? "").trim()) throw new Error("ใส่ชื่อรายการด้วย เช่น ค่าเสื้อรุ่น");
+  const link = String(m.link ?? "").trim();
+  if (link && !/^https?:\/\//i.test(link)) throw new Error("ลิงก์ต้องขึ้นต้นด้วย https://");
+  const prev = (await readFeeMonths(true)).find((r) => r.month === key);
+  await upsertWhere("feeMonths", (r) => String(r.month) === key, {
+    month: key,
+    label: m.label || monthLabel(key),
     amount: String(m.amount ?? ""),
     due_date: m.due_date ?? "",
     note: m.note ?? "",
     updated_at: nowISO(),
+    link,
+    link_label: String(m.link_label ?? "").trim().slice(0, 20),
+    created_at: prev?.created_at || nowISO(),
   });
+  return key;
 }
 
 export async function deleteMonth(month: string): Promise<void> {
   // ไม่ลบแถวจริง (กันเลขแถวเลื่อน) — ทำเป็นเดือนว่างที่ไม่แสดง
   await upsertWhere("feeMonths", (r) => String(r.month) === month, {
-    month: `x-${month}`, label: "", amount: "", due_date: "", note: "deleted", updated_at: nowISO(),
+    month: `x-${month}`, label: "", amount: "", due_date: "", note: "deleted", updated_at: nowISO(), link: "", link_label: "",
   });
 }
 
@@ -58,6 +77,9 @@ export interface MonthStatus {
   state: FeeState;
   paid_at: string;
   note: string;
+  link: string; // ปุ่มชำระ/ฟอร์มของรายการนี้ ("" = ไม่มี)
+  link_label: string;
+  created_at: string;
 }
 
 export function stateFor(m: FeeMonth, p: Payment | undefined, now = Date.now()): FeeState {
@@ -65,7 +87,7 @@ export function stateFor(m: FeeMonth, p: Payment | undefined, now = Date.now()):
   const due = dueOf(m);
   const thisMonth = bkkDayKey(now).slice(0, 7);
   if (due && due.getTime() < now) return "overdue";
-  if (m.month > thisMonth) return "upcoming";
+  if (m.month.slice(0, 7) > thisMonth) return "upcoming";
   return "unpaid";
 }
 
@@ -80,6 +102,7 @@ export async function feeStatusFor(studentId: string, now = Date.now()) {
     return {
       month: m.month, label: m.label || monthLabel(m.month), amount: Number(m.amount) || 0,
       due: due ? due.toISOString() : "", state: stateFor(m, p, now), paid_at: p?.paid_at ?? "", note: m.note,
+      link: m.link ?? "", link_label: m.link_label || "ชำระเงิน", created_at: m.created_at || m.updated_at || "",
     };
   });
   const owed = list.filter((x) => x.state === "unpaid" || x.state === "overdue");
@@ -127,7 +150,7 @@ export async function applyPayments(changes: PayChange[], by: string): Promise<n
   const creates: Record<string, string>[] = [];
   for (const c of changes) {
     const sid = digits(c.student_id);
-    if (!sid || !/^\d{4}-\d{2}$/.test(c.month)) continue;
+    if (!sid || !FEE_KEY.test(c.month)) continue;
     const rec: Record<string, string> = {
       student_id: sid,
       month: c.month,
@@ -155,7 +178,7 @@ export async function applyPayments(changes: PayChange[], by: string): Promise<n
 
 // จ่ายรายปี: ลงทุกเดือนที่ระบุ (ค่าเริ่มต้น = ทุกเดือนที่มีในระบบ)
 export async function markYearly(studentId: string, months: string[] | null, by: string, note = "จ่ายรายปี"): Promise<number> {
-  const all = months ?? (await readFeeMonths(true)).map((m) => m.month);
+  const all = months ?? (await readFeeMonths(true)).filter((m) => isMonthlyKey(m.month)).map((m) => m.month); // รายปี = เฉพาะเงินรุ่นรายเดือน (ไม่รวมค่าเสื้อ ฯลฯ)
   return applyPayments(all.map((month) => ({ student_id: studentId, month, kind: "yearly", note })), by);
 }
 
@@ -221,7 +244,9 @@ export async function queueUnpaidReminder(opts: { month?: string; note?: string;
     if (!owed.length && !carried) continue;
     if (!reg.has(r.student_id)) { unreg++; continue; }
     const text = `${r.nickname || "เพื่อน"} จ๋า 💸 แอบมาเตือนเงินรุ่นน้า\n\n${carried ? `• ค้างยกมาจากก่อนหน้า ${carried} เดือน\n` : ""}${owed.map((m) => `• ${m.label} ${m.amount} บาท${m.state === "overdue" ? " (เลยกำหนดแล้ว)" : m.due ? ` (ภายใน ${m.due.slice(0, 10)})` : ""}`).join("\n")}\nรวม ${owed.reduce((a, m) => a + m.amount, 0).toLocaleString()} บาท${cfg.payment_info ? `\n\nวิธีจ่าย: ${cfg.payment_info}` : ""}${opts.note ? `\n\n${opts.note}` : ""}\n\nจ่ายแล้วส่งสลิปในแอปหรือส่งรูปสลิปในแชตนี้ได้เลย ถ้าจ่ายไปแล้วทักฝ่ายการเงินได้เลยนะ 🙏`;
-    per[r.student_id] = reminderMessages({ text, title: "เงินรุ่น", links, color: "#059669" });
+    // ปุ่มชำระของแต่ละรายการ (ฝ่ายการเงินใส่ลิงก์ไว้) ขึ้นก่อน แล้วค่อยลิงก์ทั่วไป
+    const own = owed.filter((m) => m.link).map((m) => ({ label: (owed.length > 1 ? `${m.link_label} ${m.label}` : m.link_label).slice(0, 20), url: m.link }));
+    per[r.student_id] = reminderMessages({ text, title: "เงินรุ่น", links: [...own, ...links].slice(0, 4), color: "#059669" });
   }
   const ids = Object.keys(per);
   if (!ids.length) return { code: "", count: 0, unreg };

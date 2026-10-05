@@ -4,6 +4,7 @@ import ActButton from "../ui/ActButton";
 import { requireAdmin } from "@/lib/bc/auth";
 import { readMembers } from "@/lib/bc/members";
 import { readForms } from "@/lib/bc/forms";
+import { readAnnouncements } from "@/lib/bc/announcements";
 import { readOverlay } from "@/lib/bc/status";
 import { readRoster } from "@/lib/bc/roster";
 import { readOutbox, resolveAudience, audienceLabel, unpackMessages } from "@/lib/bc/outbox";
@@ -37,9 +38,18 @@ export default async function InboxPage() {
   const cands = batches.length || demo ? await reminderCandidates(now) : [];
   const verified = batches.length || demo ? await verifiedMembers() : [];
   const allSids = verified.map((m) => digits(m.matched_student_id)).filter(Boolean);
+  // วันงานของประกาศ (แก้ได้ในการ์ด) — รายการฟอร์มใช้ประกาศที่ผูกไว้
+  const anns = batches.length || demo ? await readAnnouncements() : [];
+  const annOf = (key: string) => {
+    const [k, id] = key.split(":");
+    if (k === "ann") return anns.find((a) => a.id === id);
+    if (k === "form") { const f = forms.find((x) => x.form_id === id); return anns.find((a) => (f?.announcement_id && a.id === f.announcement_id) || a.form_id === id); }
+    return undefined;
+  };
   const entry = (c: DigestItem): BatchEntry => ({
     key: c.key, kind: c.kind, title: c.title, when: c.at ? `${relativeTh(c.at, now)} · ${thDateTime(c.at)}` : "", forAll: c.forAll,
     ids: c.forAll ? [] : Array.from(c.undone ?? []), links: c.links.map((l) => l.label),
+    at: c.at, event: c.kind === "exam" ? c.at : annOf(c.key)?.event_at ?? "",
   });
   const batchProps = await Promise.all(batches.map(async (o) => {
     const keys = await normalizeKeys(batchKeys(o) ?? []);

@@ -14,7 +14,7 @@ import { cached, bust } from "@/lib/cache";
 export { colLetter };
 
 // เปลี่ยนเลขนี้เมื่อแก้ HEADERS -> ทุก instance จะ ensure header ใหม่อีกรอบ
-const SCHEMA_VERSION = "v3.3";
+const SCHEMA_VERSION = "v3.4";
 
 const MANAGED = (Object.keys(TABS) as TabKey[]).filter((k) => HEADERS[k].length > 0);
 
@@ -43,7 +43,7 @@ async function readAll(keys: TabKey[]): Promise<Record<string, SheetRow[]>> {
 }
 
 // แท็บที่โตเร็ว/ไม่ต้องใช้ใน hot path -> ไม่อยู่ใน snapshot
-const NOT_IN_SNAPSHOT: TabKey[] = ["chatlog", "sendLog", "usage", "slips"];
+const NOT_IN_SNAPSHOT: TabKey[] = ["chatlog", "sendLog", "usage", "slips", "media"];
 const ALL_KEYS = (Object.keys(TABS) as TabKey[]).filter((k) => !NOT_IN_SNAPSHOT.includes(k));
 
 // อ่านทุกแท็บ BC (cache 20 วิ แชร์ข้าม instance)

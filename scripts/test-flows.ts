@@ -71,5 +71,41 @@ async function main() {
   ok("claim token bound to sub", verifyClaim(signClaim("Ua", "1"), "Ua") === "1" && verifyClaim(signClaim("Ua", "1"), "Ub") === null);
   ok("register match by last3", (await candidateFor("บิงโก", "071")).candidate?.sid === "6801101071");
   ok("register bad last3", !!(await candidateFor("x", "999")).error);
+
+  // 7) v7: จัดชุดประกาศ (ร่าง) · เรียกเก็บเรื่องอื่น + ลิงก์ชำระ · รูปอัปโหลด · สวิตช์ Red Zone · ประวัติ
+  const { bulkUpdateAnnouncements } = await import("../lib/bc/announcements");
+  const a1 = await createAnnouncement({ title: "TEST ชุด 1", summary: "", body: "x", status: "draft", source: "manual" });
+  const a2 = await createAnnouncement({ title: "TEST ชุด 2", summary: "", body: "x", status: "draft", source: "manual" });
+  await bulkUpdateAnnouncements([{ id: a2, patch: { group_name: "TEST set", sort_order: "1" } }, { id: a1, patch: { group_name: "TEST set", sort_order: "2" } }]);
+  const g = (await readAnnouncements(true)).filter((x) => x.group_name === "TEST set");
+  ok("announcement bulk group + order", g.length === 2 && g.find((x) => x.id === a2)?.sort_order === "1");
+  await bulkUpdateAnnouncements([a1, a2].map((x) => ({ id: x, patch: { status: "deleted" } })));
+  ok("announcement bulk delete", !(await readAnnouncements(true)).some((x) => x.id === a1 || x.id === a2));
+
+  const { upsertMonth, deleteMonth, readFeeMonths } = await import("../lib/bc/fees");
+  const key = await upsertMonth({ month: "2099-02", other: true, label: "TEST ค่าเสื้อ", amount: "450", due_date: "2099-02-10", link: "https://forms.gle/test", link_label: "ชำระค่าเสื้อ" });
+  const fm = (await readFeeMonths(true)).find((m) => m.month === key);
+  ok("other charge key + link", /^2099-02-[a-z0-9]{4}$/.test(key) && fm?.link === "https://forms.gle/test" && fm?.label === "TEST ค่าเสื้อ");
+  const st = await feeStatusFor("6801101071");
+  ok("charge visible with pay button", st.months.some((m) => m.month === key && m.link_label === "ชำระค่าเสื้อ"));
+  await deleteMonth(key);
+  ok("charge deleted", !(await readFeeMonths(true)).some((m) => m.month === key));
+
+  const { saveMedia, readMedia } = await import("../lib/bc/media");
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const file = await saveMedia(png, "image/png");
+  const back = await readMedia(file.replace(/\.png$/, ""));
+  ok("media save/read roundtrip", back?.mime === "image/png" && back.buf.toString("base64") === png);
+
+  const { setConfig, getConfigValue } = await import("../lib/bc/config");
+  const prev = await getConfigValue("red_zone_enabled");
+  await setConfig("red_zone_enabled", "0", "test");
+  const { bust } = await import("../lib/cache"); bust("bc");
+  const off = await ranking();
+  ok("red zone off -> everyone safe", !off.enabled && off.rows.every((x) => x.level === "safe"));
+  const meOff = await personalState("6801101071");
+  ok("app shows Green Zone + history", meOff.zone.enabled === false && meOff.zone.title === "Green Zone" && Array.isArray(meOff.history));
+  await setConfig("red_zone_enabled", prev, "test restore");
+  ok("board has past list", Array.isArray((await publicBoard()).past));
 }
 main().catch((e) => { console.error(e); process.exit(1); });

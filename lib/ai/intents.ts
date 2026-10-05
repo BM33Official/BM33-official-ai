@@ -61,8 +61,11 @@ export async function tryRules(q0: string, asker: Asker): Promise<AnswerOut | nu
 
   // red zone ของฉัน
   if (asker.channel !== "group" && asker.verified && asker.studentId && /(red ?zone|เรดโซน|เรด โซน)/i.test(q) && /(ฉัน|เรา|ผม|หนู|ไหม|มั้ย|ยัง|อยู่)/.test(q)) {
-    const { rows } = await ranking();
+    const { rows, enabled } = await ranking();
     const r = rows.find((x) => x.student_id === asker.studentId);
+    if (r && !enabled) {
+      return { ...ans(`${nick}อยู่ Green Zone นะ 💚 ตอนนี้ทุกคนเริ่มต้นใหม่หมด ยังไม่มีใครอยู่ Red Zone\n\nดูประวัติการเรียกเก็บเงินรุ่นและงานวิชาการของตัวเองได้ในแอป BM33 แท็บของฉัน`, "วิชาการ"), personal: true };
+    }
     if (r) {
       const fee = r.feeMisses ? `\n💸 เงินรุ่นที่เลยกำหนด: ${r.feeMonths.join(", ")} (จ่ายแล้วส่งสลิปในแอปได้เลย)` : "";
       const msg = r.level === "red"

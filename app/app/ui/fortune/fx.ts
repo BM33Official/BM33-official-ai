@@ -6,13 +6,55 @@ let ac: AudioContext | null = null;
 function audio(): AudioContext | null {
   try {
     if (!ac) ac = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-    if (ac.state === "suspended") ac.resume();
+    if (ac.state !== "running") ac.resume().catch(() => {});
     return ac;
   } catch { return null; }
 }
 
+// ── ปลดล็อกเสียงบนมือถือ ────────────────────────────────────────────────────
+// มือถือยอมให้เล่นเสียงเฉพาะ "ระหว่างที่นิ้วแตะ" เท่านั้น — คัตซีนเริ่มเล่นเสียงหลังรอเฟรม/ฟอนต์ (หลุดจังหวะแตะ)
+// -> ต้องเรียก unlock() ทันทีใน onClick · iPhone: WebAudio เงียบเมื่อเปิดสวิตช์ปิดเสียง
+// -> ขอ audio session แบบ "playback" + เล่นไฟล์เงียบผ่าน <audio> (สลับหมวดเสียงให้ดังได้แม้เปิดโหมดเงียบ)
+let silentEl: HTMLAudioElement | null = null;
+let silentStop = 0;
+function silentWav(): string {
+  const n = 2205; // 0.1 วิ 22.05 kHz mono 8-bit
+  const buf = new Uint8Array(44 + n);
+  const dv = new DataView(buf.buffer);
+  const w = (o: number, t: string) => { for (let i = 0; i < t.length; i++) buf[o + i] = t.charCodeAt(i); };
+  w(0, "RIFF"); dv.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, 22050, true); dv.setUint32(28, 22050, true); dv.setUint16(32, 1, true); dv.setUint16(34, 8, true);
+  w(36, "data"); dv.setUint32(40, n, true);
+  buf.fill(128, 44); // 8-bit เงียบ = 128
+  let bin = ""; for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i]);
+  return `data:audio/wav;base64,${btoa(bin)}`;
+}
+export function unlockAudio(holdMs = 16_000): void {
+  try {
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    if (nav.audioSession) nav.audioSession.type = "playback";
+  } catch { /* เบราว์เซอร์เก่า */ }
+  const a = audio();
+  if (a) {
+    try { const b = a.createBuffer(1, 1, 22050); const src = a.createBufferSource(); src.buffer = b; src.connect(a.destination); src.start(0); } catch { /* */ }
+  }
+  try {
+    if (!silentEl) {
+      silentEl = new Audio(silentWav());
+      silentEl.loop = true;
+      silentEl.setAttribute("playsinline", "");
+      silentEl.setAttribute("webkit-playsinline", "");
+    }
+    silentEl.play().catch(() => {});
+    clearTimeout(silentStop);
+    silentStop = window.setTimeout(() => { silentEl?.pause(); }, holdMs);
+  } catch { /* */ }
+}
+
 export const sound = {
   enabled: true,
+  unlock() { if (this.enabled) unlockAudio(); },
   tick(pitch = 1) {
     if (!this.enabled) return;
     const a = audio(); if (!a) return;

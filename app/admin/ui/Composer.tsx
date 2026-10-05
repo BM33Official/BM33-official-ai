@@ -1,6 +1,73 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { ImagePlus, X, Link2 } from "lucide-react";
 import { act } from "./api";
+
+// ย่อรูปในเครื่องก่อนอัปโหลด: ด้านยาว ≤1600px JPEG และไม่เกิน ~950KB (LINE รับรูปพรีวิว ≤1MB)
+async function shrink(file: File): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+    let side = 1600, q = 0.86, out = "";
+    for (let k = 0; k < 7; k++) {
+      const r = Math.min(1, side / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * r); c.height = Math.round(img.height * r);
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length * 0.75 < 950_000) break;
+      q = Math.max(0.6, q - 0.08); side = Math.round(side * 0.85);
+    }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function ImagePicker({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [drag, setDrag] = useState(false);
+  const [paste, setPaste] = useState(false);
+  async function upload(file?: File | null) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { setErr("เลือกไฟล์รูปนะ"); return; }
+    setBusy(true); setErr("");
+    try {
+      const image = await shrink(file);
+      const r = await fetch("/admin/api/media", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ image, mime: "image/jpeg" }) }).then((x) => x.json());
+      if (r.ok) onChange(String(r.url)); else setErr(String(r.error ?? "อัปโหลดไม่สำเร็จ"));
+    } catch { setErr("อ่านรูปไม่ได้ ลองรูปอื่นนะ"); } finally { setBusy(false); }
+  }
+  return (
+    <div>
+      {value ? (
+        <div className="img-pick has">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={value} alt="" />
+          <div className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn btn-sm" onClick={() => ref.current?.click()} disabled={busy}><ImagePlus size={15} /> เปลี่ยนรูป</button>
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange("")}><X size={15} /> เอาออก</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" className={`img-pick ${drag ? "drag" : ""}`} onClick={() => ref.current?.click()} disabled={busy}
+          onDragOver={(e) => { e.preventDefault(); setDrag(true); }} onDragLeave={() => setDrag(false)}
+          onDrop={(e) => { e.preventDefault(); setDrag(false); upload(e.dataTransfer.files?.[0]); }}>
+          <ImagePlus size={26} />
+          <b>{busy ? "กำลังอัปโหลด…" : "แตะเพื่อเลือกรูป หรือลากรูปมาวาง"}</b>
+          <small>JPEG/PNG · ระบบย่อให้พอดี LINE อัตโนมัติ</small>
+        </button>
+      )}
+      <input ref={ref} type="file" accept="image/*" hidden onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} />
+      {err && <div className="hint" style={{ color: "var(--red-ink)" }}>{err}</div>}
+      {!value && (paste
+        ? <input style={{ marginTop: 8 }} placeholder="https://... (ลิงก์รูปที่เปิดดูได้สาธารณะ)" onChange={(e) => onChange(e.target.value.trim())} />
+        : <button type="button" className="hint linkish" onClick={() => setPaste(true)}><Link2 size={12} /> มีลิงก์รูปอยู่แล้ว? วางลิงก์แทน</button>)}
+    </div>
+  );
+}
 
 type FormOpt = { form_id: string; name: string };
 
@@ -118,11 +185,8 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
           </div>
         </div>
 
-        {f.message_type === "image" && (
-          <div className="field"><label>ลิงก์รูปภาพ (https)</label>
-            <input value={f.image_url} onChange={(e) => set({ image_url: e.target.value })} placeholder="https://... (JPEG/PNG · เปิดดูได้แบบสาธารณะ)" />
-            <div className="hint">ต้องเป็นลิงก์ https ที่เปิดดูรูปได้ตรง ๆ เช่น imgur, Cloudinary หรือ Google Drive แบบ uc?export=view&id=… · ใส่ข้อความด้านล่างเป็นแคปชันต่อจากรูปได้</div></div>
-        )}
+        <div className="field"><label>{f.message_type === "image" ? "รูปภาพ" : "แนบรูป (ไม่บังคับ) — ส่งรูปขึ้นก่อน แล้วตามด้วยข้อความ"}</label>
+          <ImagePicker value={f.image_url} onChange={(url) => set({ image_url: url })} /></div>
 
         {f.message_type === "flex" && (
           <div className="field"><label>หัวข้อ (หัวการ์ด)</label>
@@ -196,6 +260,10 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
       {/* ── พรีวิว ── */}
       <div>
         <h2 style={{ marginTop: 0 }}>ตัวอย่าง</h2>
+        {f.message_type !== "image" && f.image_url && (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img src={f.image_url} alt="" style={{ display: "block", maxWidth: 300, width: "100%", borderRadius: 14, marginBottom: 8 }} />
+        )}
         {f.message_type === "flex" ? (
           <div className="preview">
             <div className="ph" style={{ background: f.header_color }}>{f.title || "หัวข้อ"}</div>
@@ -209,7 +277,7 @@ export default function Composer({ forms, initial }: { forms: FormOpt[]; initial
             {f.image_url
               ? /* eslint-disable-next-line @next/next/no-img-element */
                 <img src={f.image_url} alt="preview" style={{ display: "block", width: "100%", height: "auto" }} onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.25"; }} />
-              : <div className="pb" style={{ textAlign: "center", color: "var(--muted)" }}>วางลิงก์รูปเพื่อดูตัวอย่าง 🖼️</div>}
+              : <div className="pb" style={{ textAlign: "center", color: "var(--muted)" }}>เลือกรูปเพื่อดูตัวอย่าง 🖼️</div>}
             {f.body_text && <div className="pb">{f.body_text}</div>}
           </div>
         ) : (

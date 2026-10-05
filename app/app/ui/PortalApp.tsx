@@ -8,6 +8,7 @@ import Home, { useNow } from "./Home";
 import { AnnouncementDetail } from "./News";
 import Schedule from "./Schedule";
 import Me from "./Me";
+import History from "./History";
 import FortuneScreen from "./fortune/Fortune";
 import { DrawOverlay, Splash, ConfirmScreen, RegisterScreen, OutsideLine } from "./Overlays";
 
@@ -22,6 +23,8 @@ export default function PortalApp() {
   const [meSection, setMeSection] = useState<string | undefined>();
   const [homeFocus, setHomeFocus] = useState<string | undefined>();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [histOpen, setHistOpen] = useState(false);
+  const openHistory = useCallback(() => { haptic(); setHistOpen(true); }, []);
   const [energy, setEnergy] = useState(0);
   const [toast, setToastRaw] = useState({ t: "", n: 0 });
   const setToast = useCallback((t: string) => setToastRaw((x) => ({ t, n: x.n + 1 })), []);
@@ -82,7 +85,8 @@ export default function PortalApp() {
     } as Partial<Record<TabKey, boolean>>;
   }, [data, now]);
 
-  const openAnn = data?.board.announcements.find((a) => a.id === openId) ?? null;
+  // ประกาศที่ผ่านไปแล้วก็เปิดดูได้ (จากปุ่ม "ที่ผ่านมาแล้ว" หรือลิงก์เก่า)
+  const openAnn = data?.board.announcements.find((a) => a.id === openId) ?? data?.board.past?.find((a) => a.id === openId) ?? null;
 
   if (phase.kind === "boot" && !data) return <><FluidBackground /><div className="bm-grain" /><Splash /></>;
   if (phase.kind === "outside") return <><FluidBackground /><OutsideLine /></>;
@@ -107,7 +111,7 @@ export default function PortalApp() {
 
       <main className="shell">
         <section ref={(el) => { screens.current.home = el; }} className={`screen ${tab === "home" ? "active" : ""}`} aria-hidden={tab !== "home"}>
-          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} focus={homeFocus} onFocused={() => setHomeFocus(undefined)} />
+          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} focus={homeFocus} onFocused={() => setHomeFocus(undefined)} openHistory={openHistory} />
         </section>
         <section ref={(el) => { screens.current.schedule = el; }} className={`screen ${tab === "schedule" ? "active" : ""}`} aria-hidden={tab !== "schedule"}>
           <Schedule data={data} active={tab === "schedule"} />
@@ -119,7 +123,7 @@ export default function PortalApp() {
           />
         </section>
         <section ref={(el) => { screens.current.me = el; }} className={`screen ${tab === "me" ? "active" : ""}`} aria-hidden={tab !== "me"}>
-          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} go={go} openAnn={setOpenId} />
+          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} go={go} openAnn={setOpenId} openHistory={openHistory} />
         </section>
       </main>
 
@@ -127,6 +131,10 @@ export default function PortalApp() {
 
       <Sheet open={!!openAnn} onClose={() => setOpenId(null)}>
         {openAnn && <AnnouncementDetail a={openAnn} now={now} />}
+      </Sheet>
+
+      <Sheet open={histOpen} onClose={() => setHistOpen(false)}>
+        {histOpen && <History data={data} />}
       </Sheet>
 
       <DrawOverlay data={data} now={now} />

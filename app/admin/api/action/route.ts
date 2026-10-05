@@ -17,7 +17,7 @@ import {
   scheduleSummary, unscheduleSummary,
 } from "@/lib/bc/summary";
 import {
-  parseAnnouncement, createAnnouncement, updateAnnouncement, getAnnouncement, extractUrls,
+  parseAnnouncement, createAnnouncement, updateAnnouncement, getAnnouncement, extractUrls, bulkUpdateAnnouncements,
 } from "@/lib/bc/announcements";
 import { generateDaily, updateDaily } from "@/lib/bc/daily";
 import { saveScheduleRows, saveUniExamRows, publishUpload, readSchedule } from "@/lib/bc/schedule";
@@ -46,6 +46,7 @@ const CONFIG_KEYS: ConfigKey[] = [
   "gemini_model", "approver_line_ids", "payment_info", "payment_link", "finance_sheet_link",
   "red_zone_size", "reminder_plan", "portal_notice", "semester_label", "president_student_id",
   "ai_budget_usd", "ai_price_json", "ai_user_daily_cap", "linktree_url", "payment_account_name", "payment_account_no", "slip_auto_approve", "usd_thb",
+  "red_zone_enabled", "learn_groups",
 ];
 
 export async function POST(req: Request) {
@@ -215,6 +216,27 @@ export async function POST(req: Request) {
         return j({ ...(await addReminder(`ann:${a.id}`)) });
       }
 
+      case "announce.bulk": {
+        // เลือกหลายประกาศ: patch เดียวกันทุกอัน (จัดชุด/ซ่อน/ปักหมุด/หมวด) หรือ order = เรียงลำดับใหม่ตาม ids
+        const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String).filter(Boolean) : [];
+        if (!ids.length) return NextResponse.json({ ok: false, error: "ยังไม่ได้เลือก" });
+        const allowed = ["status", "pinned", "category", "group_name", "sort_order"];
+        const raw = (body.patch ?? {}) as Record<string, unknown>;
+        const patch: Record<string, string> = {};
+        for (const [k, v] of Object.entries(raw)) if (allowed.includes(k)) patch[k] = String(v ?? "").slice(0, 60);
+        const changes = body.order === true
+          ? ids.map((id, i) => ({ id, patch: { ...patch, sort_order: String(i + 1) } }))
+          : ids.map((id) => ({ id, patch }));
+        return j({ n: await bulkUpdateAnnouncements(changes) });
+      }
+      case "announce.bulkRemind": {
+        // ส่ง LINE หลายเรื่องรวมเป็น "เตือนรวม" รายการเดียว -> ไปกดส่งที่ รออนุมัติ
+        const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String).filter(Boolean) : [];
+        const { addToBatch } = await import("@/lib/bc/digest");
+        const r = await addToBatch(ids.map((id) => `ann:${id}`), { notify: false });
+        return j({ code: r?.item.code ?? "", n: r?.keys.length ?? 0 });
+      }
+
       // ── สรุปวันนี้ ─────────────────────────────────────────────────────────
       case "daily.generate":
         return j({ ...(await generateDaily({ force: true })) });
@@ -251,6 +273,38 @@ export async function POST(req: Request) {
         const { addToBatch } = await import("@/lib/bc/digest");
         const r = await addToBatch([String(body.key ?? "")], { notify: false });
         return j({ code: r?.item.code ?? "", items: r?.keys.length ?? 0 });
+      }
+      case "outbox.setDate": {
+        // แก้วันในหน้า รออนุมัติ -> แก้ที่ต้นทางจริง (ประกาศ / สิ่งที่ต้องกรอก / ตารางสอบ) ให้แอปตรงกันทันที
+        const [kind, id] = String(body.key ?? "").split(":");
+        const dl = body.deadline === undefined ? undefined : String(body.deadline ?? "");
+        const ev = body.event === undefined ? undefined : String(body.event ?? "");
+        const iso = (v: string) => (v && isNaN(new Date(v).getTime()) ? null : v);
+        if ((dl !== undefined && iso(dl) === null) || (ev !== undefined && iso(ev) === null)) return NextResponse.json({ ok: false, error: "วันเวลาไม่ถูกต้อง" });
+        if (kind === "ann") {
+          const patch: Partial<Announcement> = {};
+          if (dl !== undefined) patch.deadline_at = dl;
+          if (ev !== undefined) patch.event_at = ev;
+          return NextResponse.json({ ok: await updateAnnouncement(id, patch) });
+        }
+        if (kind === "form") {
+          const f = await getForm(id);
+          if (!f) return NextResponse.json({ ok: false, error: "ไม่พบรายการ" });
+          if (dl !== undefined) await updateForm(f, { deadline_at: dl });
+          const annId = f.announcement_id;
+          if (annId) {
+            const patch: Partial<Announcement> = {};
+            if (dl !== undefined) patch.deadline_at = dl;
+            if (ev !== undefined) patch.event_at = ev;
+            if (Object.keys(patch).length) await updateAnnouncement(annId, patch);
+          }
+          return j({});
+        }
+        if (kind === "exam" && ev) {
+          const d = new Date(new Date(ev).getTime() + 7 * 3600_000).toISOString();
+          return j({ n: await saveUniExamRows([{ id, date: d.slice(0, 10), start: d.slice(11, 16) }]) });
+        }
+        return NextResponse.json({ ok: false, error: "แก้วันของรายการนี้ไม่ได้" });
       }
       case "outbox.reject":
         return NextResponse.json({ ok: await rejectOutbox(String(body.id ?? ""), `web:${by}`) });
@@ -355,6 +409,21 @@ export async function POST(req: Request) {
       case "ai.refresh": {
         bust("knowledge");
         (await import("@/lib/ai/corpus")).resetCorpus();
+        return j({});
+      }
+
+      // ── กลุ่ม LINE ของบอท ──────────────────────────────────────────────────
+      case "groups.list": {
+        const { groupInfos } = await import("@/lib/bc/groups");
+        // กลุ่มที่เคยมีข้อความใน buffer 07 (ก่อนเริ่มจำกลุ่ม) ก็แสดงด้วย
+        const { readTable, getSheetTitles } = await import("@/lib/google-sheets");
+        const raw = (await getSheetTitles().catch(() => [] as string[])).find((t) => t.startsWith("07"));
+        const seen = raw ? Array.from(new Set((await readTable(raw).catch(() => [])).map((r) => String(r.groupId ?? "")).filter((x) => /^[CR][0-9a-f]{32}$/.test(x)))) : [];
+        return j({ ...(await groupInfos(seen)) });
+      }
+      case "groups.leave": {
+        const { leaveGroup } = await import("@/lib/bc/groups");
+        await leaveGroup(String(body.id ?? ""));
         return j({});
       }
 

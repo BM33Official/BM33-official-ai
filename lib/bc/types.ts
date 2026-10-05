@@ -27,6 +27,8 @@ export const TABS = {
   // ── v3 ──
   usage: "BC_usage", // ค่าใช้จ่าย AI ต่อครั้ง (ไม่อยู่ใน snapshot)
   slips: "BC_slips", // สลิปโอนเงินที่สมาชิกส่ง + ผลตรวจ AI (ไม่อยู่ใน snapshot — มีรูป)
+  // ── v7 ──
+  media: "BC_media", // รูปที่อัปโหลดจาก control center (base64 แบ่งเป็นชิ้น · ไม่อยู่ใน snapshot)
 } as const;
 export type TabKey = keyof typeof TABS;
 
@@ -72,6 +74,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "id", "title", "summary", "body", "author", "author_role", "category",
     "deadline_at", "event_at", "location", "links", "source", "source_ref",
     "status", "pinned", "created_at", "updated_at", "reminders", "form_id",
+    "group_name", "sort_order",
   ],
   daily: ["id", "date", "headline", "items", "status", "source", "created_at", "updated_at"],
   schedule: [
@@ -80,7 +83,7 @@ export const HEADERS: Record<TabKey, string[]> = {
   ],
   uniExams: ["id", "name", "date", "start", "end", "building", "room", "block", "note", "status", "updated_at"],
   uploads: ["id", "filename", "mime", "block", "status", "summary", "created_at", "note"],
-  feeMonths: ["month", "label", "amount", "due_date", "note", "updated_at"],
+  feeMonths: ["month", "label", "amount", "due_date", "note", "updated_at", "link", "link_label", "created_at"],
   payments: ["student_id", "month", "amount", "kind", "paid_at", "recorded_by", "note", "updated_at"],
   draws: [
     "id", "activity", "need", "pool_ids", "selected_ids", "status",
@@ -97,6 +100,7 @@ export const HEADERS: Record<TabKey, string[]> = {
     "id", "student_id", "month", "amount", "paid_at", "bank_ref", "receiver", "ai_verdict", "ai_note",
     "status", "image", "created_at", "decided_at", "decided_by", "source",
   ],
+  media: ["id", "part", "mime", "data", "created_at"],
 };
 
 export interface Exam {
@@ -237,6 +241,8 @@ export interface Announcement {
   updated_at: string;
   reminders: string; // JSON {"d3":iso,"d1":iso,"d0":iso} — รอบเตือนที่สร้างแล้ว
   form_id: string; // ผูกกับฟอร์มที่ติดตาม (ถ้ามี)
+  group_name?: string; // ชุดประกาศที่แอดมินจัดกลุ่มเอง ("" = ไม่มีกลุ่ม)
+  sort_order?: string; // ลำดับที่แอดมินจัดเอง (ตัวเลขน้อย = ขึ้นก่อน · "" = ตามเวลา)
 }
 
 export interface DailyItem {
@@ -306,12 +312,15 @@ export interface UploadRec {
 
 export interface FeeMonth {
   __row?: number;
-  month: string; // YYYY-MM
+  month: string; // YYYY-MM (เงินรุ่นรายเดือน) หรือ YYYY-MM-xxxx (เรียกเก็บอื่น ๆ เช่น ค่าเสื้อ)
   label: string;
   amount: string;
   due_date: string; // YYYY-MM-DD
   note: string;
   updated_at: string;
+  link?: string; // ลิงก์ฟอร์ม/ช่องทางชำระของรายการนี้ -> เป็นปุ่มในแอป
+  link_label?: string; // ข้อความบนปุ่ม (ว่าง = "ชำระเงิน")
+  created_at?: string;
 }
 export interface Payment {
   __row?: number;

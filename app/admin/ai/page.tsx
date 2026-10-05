@@ -7,12 +7,13 @@ import { readRoster } from "@/lib/bc/roster";
 import { getConfigValue } from "@/lib/bc/config";
 import { budgetState, baht } from "@/lib/ai/usage";
 import { corpusIndex, corpusStats } from "@/lib/ai/corpus";
-import { agoTh, bkkDayKey } from "@/lib/time";
+import { bkkDayKey } from "@/lib/time";
 import { Head, Sq, Ring, Bars, Meter, type Tone } from "../ui/kit";
 import AiConsole from "../ui/AiConsole";
 import ModelPicker from "../ui/ModelPicker";
 import ExpandText from "../ui/ExpandText";
 import ChatImport from "../ui/ChatImport";
+import RecentQuestions from "../ui/RecentQuestions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +38,7 @@ export default async function AiPage() {
     corpusIndex().catch(() => null),
   ]);
   const cs = ix ? corpusStats(ix) : null;
-  const recent = [...chat].reverse().slice(0, 30);
+  const recent = [...chat].reverse().slice(0, 400);
   const learned = kb.filter((r) => String(r["รหัสความรู้"] ?? "").startsWith("KB-AUTO")).reverse();
   const month = bkkDayKey().slice(0, 7);
   const dim = new Date(Date.UTC(+month.slice(0, 4), +month.slice(5, 7), 0)).getUTCDate();
@@ -113,23 +114,7 @@ export default async function AiPage() {
       </div>
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={MessagesSquare} tone="line" /> คำถามล่าสุดจากเพื่อน ๆ</h2>
-      <div className="list">
-        {recent.length === 0 && <div className="li"><span className="hint">ยังไม่มี</span></div>}
-        {recent.map((c, i) => {
-          const route = routeOf(c.model);
-          return (
-            <details key={i} className="li" style={{ display: "block" }}>
-              <summary style={{ listStyle: "none", cursor: "pointer", display: "flex", gap: 10, alignItems: "center" }}>
-                <span className={`badge ${KIND_TH[String(c.kind)]?.[1] ?? ""}`}>{KIND_TH[String(c.kind)]?.[0] ?? String(c.kind)}</span>
-                {route && <span className={`badge ${ROUTE_TH[route]?.[1] ?? ""}`}>{ROUTE_TH[route]?.[0] ?? route}</span>}
-                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{String(c.nickname || "ไม่ระบุ")}: {String(c.question)}</span>
-                <span className="hint" style={{ whiteSpace: "nowrap" }}>{agoTh(String(c.ts))}</span>
-              </summary>
-              {String(c.reply) && <div className="hint" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>{String(c.reply)}</div>}
-            </details>
-          );
-        })}
-      </div>
+      <RecentQuestions rows={recent.map((c) => ({ ts: String(c.ts ?? ""), nickname: String(c.nickname ?? ""), question: String(c.question ?? ""), reply: String(c.reply ?? ""), kind: String(c.kind ?? ""), route: routeOf(c.model) }))} />
 
       <details className="more" style={{ marginTop: 22 }}>
         <summary><BookOpen size={16} /> ความรู้ที่ AI สรุปจากแชตเอง ({learned.length})</summary>

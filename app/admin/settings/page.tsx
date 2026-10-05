@@ -1,5 +1,8 @@
 // ตั้งค่า — จัดเป็นกลุ่มแบบแอป Settings ของ iPhone
-import { Settings, Crown, KeyRound, Smartphone, LayoutGrid, Bell, Sparkles, Info, Link2 } from "lucide-react";
+import { Settings, Crown, KeyRound, Smartphone, LayoutGrid, Bell, Sparkles, Info, Link2, Users, ShieldCheck, CheckCircle2, AlertTriangle } from "lucide-react";
+import GroupsPanel from "../ui/GroupsPanel";
+import RedZoneSwitch from "../ui/RedZoneSwitch";
+import { readMembers } from "@/lib/bc/members";
 import { requireAdmin } from "@/lib/bc/auth";
 import { getConfig } from "@/lib/bc/config";
 import { readCommittee, seedCommitteeIfEmpty } from "@/lib/bc/committee";
@@ -23,12 +26,39 @@ function Group({ id, icon, tone, title, children }: { id?: string; icon: LucideI
 export default async function SettingsPage() {
   await requireAdmin();
   await seedCommitteeIfEmpty().catch(() => 0);
-  const [cfg, committee, roster] = await Promise.all([getConfig(), readCommittee(), readRoster()]);
+  const [cfg, committee, roster, members] = await Promise.all([getConfig(), readCommittee(), readRoster(), readMembers()]);
+  // กรรมการที่ลงทะเบียนกับบอทแล้วเท่านั้น ที่บอทจับประกาศจากกลุ่มได้ (รู้ว่าเป็นกรรมการจาก LINE user id)
+  const verifiedSids = new Set(members.filter((m) => m.status === "verified" && (m.line_user_id || m.liff_user_id)).map((m) => String(m.matched_student_id).replace(/\D/g, "")));
+  const committeeReady = committee.map((c) => ({ nickname: c.nickname, role: c.role, ok: verifiedSids.has(String(c.student_id).replace(/\D/g, "")) }));
   const rosterLite = roster.map((r) => ({ sid: r.student_id, label: `${r.nickname} · ${r.full_name}`, nickname: r.nickname }));
 
   return (
     <div className="wrap">
       <Head icon={Settings} tone="gray" title="ตั้งค่า" sub="ทุกอย่างเก็บในแท็บ BC_config ของชีต — ไม่ต้องเข้า Vercel" />
+
+      <Group icon={Users} tone="line" title="กลุ่ม LINE ของบอท">
+        <GroupsPanel learnAll={(cfg.learn_groups ?? "").trim() === "*"} />
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="card-h"><h3 style={{ margin: 0 }}>กรรมการที่บอทจับประกาศจากกลุ่มได้</h3><span className="badge b-muted">{committeeReady.filter((c) => c.ok).length}/{committeeReady.length}</span></div>
+          <p className="hint" style={{ marginTop: 0 }}>บอทรู้ว่าใครเป็นกรรมการจากบัญชี LINE ที่ลงทะเบียนแล้ว · ข้อความประกาศ (มีลิงก์/เดดไลน์/@All) ของคนที่ยังไม่ลงทะเบียนจะไม่ขึ้นแอปอัตโนมัติ — ให้กรรมการคนนั้นแอดบอทแล้วพิมพ์ชื่อลงทะเบียน</p>
+          <div className="list">
+            {committeeReady.map((c, i) => (
+              <div key={i} className="li" style={{ padding: "8px 12px" }}>
+                {c.ok ? <CheckCircle2 size={18} color="#34c759" /> : <AlertTriangle size={18} color="#ff9500" />}
+                <div className="li-b"><b>{c.nickname}</b><small>{c.role}</small></div>
+                <span className={`badge ${c.ok ? "b-green" : "b-orange"}`}>{c.ok ? "พร้อม" : "ยังไม่ลงทะเบียน"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Group>
+
+      <Group icon={ShieldCheck} tone="green" title="Red Zone">
+        <div className="card row between" style={{ gap: 14 }}>
+          <div className="hint" style={{ flex: 1, minWidth: 220 }}>ปิด = ทุกคนอยู่ <b>Green Zone</b> ทั้งในแอปและ control center (กดดูประวัติเงินรุ่น/วิชาการได้) · ข้อมูลข้อสอบและเงินรุ่นยังเก็บตามปกติ เปิดเมื่อไรก็นับจากข้อมูลจริงทันที</div>
+          <RedZoneSwitch on={(cfg.red_zone_enabled ?? "").trim() !== "0"} canEdit />
+        </div>
+      </Group>
 
       <Group icon={Link2} tone="blue" title="ลิงก์เข้าตรงของแต่ละฝ่าย">
         <AccessLinks />

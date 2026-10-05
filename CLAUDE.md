@@ -32,6 +32,8 @@ Claude Code อ่านไฟล์นี้ทุกครั้งที่�
 - AI ต้องตอบเป็น JSON schema เสมอ (`lib/ai/answer.ts`) — ห้ามกลับไปใช้ข้อความอิสระ + ROUTE: แบบเดิม
 - ❌ ห้ามส่งทั้งชีตเข้า prompt อีก — ใช้ retrieval (`lib/ai/corpus.ts`) · ทุกการเรียก Gemini ต้องใส่ `feature` เพื่อให้นับงบใน `BC_usage`
 - ❌ บอทห้ามตอบ/ส่งอะไรในกลุ่ม LINE (แม้ถูกแท็ก) — webhook `if (isGroup) return` หลังบันทึก
+- Red Zone มีสวิตช์หลัก `red_zone_enabled` ("0" = ทุกคน Green Zone) — อย่าคำนวณระดับเองนอก `ranking()` (เคารพสวิตช์นี้)
+- กลุ่มที่เก็บข้อมูล = config `learn_groups` ("*" = ทุกกลุ่ม) ก่อน env `LEARN_GROUP_IDS`
 
 ## Local dev / verify ก่อน push
 ```bash

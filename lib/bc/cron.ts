@@ -11,7 +11,7 @@ import { runDueSummaries } from "@/lib/bc/summary";
 import { runReminderCron } from "@/lib/bc/reminders";
 import { generateDaily } from "@/lib/bc/daily";
 import { readDraws, drawPhase, markDrawNotified, drawIds } from "@/lib/bc/draws";
-import { createOutbox, reminderMessages } from "@/lib/bc/outbox";
+import { createOutbox, reminderMessages, approveAndSend } from "@/lib/bc/outbox";
 import { bkkParts } from "@/lib/time";
 import { log } from "@/lib/logger";
 
@@ -44,13 +44,16 @@ export async function runAppAutomation(now = Date.now()): Promise<{ daily: strin
       const app = "https://liff.line.me/2011755768-aSlCqo7l?tab=me";
       if (sel.length) {
         const text = `🎯 ผลการสุ่มกิจกรรม "${d.activity}"\n\nคุณได้รับเลือกให้ร่วมกิจกรรมนี้นะ ขอบคุณที่ช่วยรุ่น 💙\nรายละเอียดเพิ่มเติมฝ่ายวิชาการจะแจ้งอีกครั้ง\n\n(ข้อความนี้ส่งถึงเฉพาะคุณ)`;
-        await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:selected`, title: `แจ้งผู้ถูกเลือก: ${d.activity} (${sel.length} คน)`, audience: `ids:${sel.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text });
+        const it = await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:selected`, title: `แจ้งผู้ถูกเลือก: ${d.activity} (${sel.length} คน)`, audience: `ids:${sel.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text, notify: false });
+        // การสุ่มเป็นงานของฝ่ายวิชาการ -> ส่งผลทันที ไม่ต้องรอแอดมิน (แถวใน outbox = ประวัติ)
+        await approveAndSend(it.id, "academic:สุ่ม").catch((err) => log.warn("draw_send_failed", { message: String(err).slice(0, 200) }));
       }
       if (rest.length) {
         const text = `🍀 ผลการสุ่มกิจกรรม "${d.activity}"\n\nรอบนี้คุณไม่ได้ถูกเลือกนะ แต่อย่าลืมทยอยจำข้อสอบให้ครบน้า 📘\n\n(ข้อความนี้ส่งถึงเฉพาะคุณ)`;
-        await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:rest`, title: `แจ้งผู้ไม่ถูกเลือก: ${d.activity} (${rest.length} คน)`, audience: `ids:${rest.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text });
+        const it = await createOutbox({ kind: "draw", ref_id: `draw:${d.id}:rest`, title: `แจ้งผู้ไม่ถูกเลือก: ${d.activity} (${rest.length} คน)`, audience: `ids:${rest.join(",")}`, messages: reminderMessages({ text, title: d.activity, links: [{ label: "ดูในแอป BM33", url: app }] }), preview: text, notify: false });
+        await approveAndSend(it.id, "academic:สุ่ม").catch((err) => log.warn("draw_send_failed", { message: String(err).slice(0, 200) }));
       }
-      await markDrawNotified(d.id, "queued");
+      await markDrawNotified(d.id, "sent");
       draws++;
     }
   } catch (err) { log.warn("draw_cron_failed", { message: String(err).slice(0, 200) }); }

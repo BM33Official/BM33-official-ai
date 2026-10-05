@@ -96,11 +96,20 @@ export function formVisible(f: Pick<FormDef, "status" | "deadline_at" | "closed_
   const end = formEndedAt(f, now);
   return end === null || now - end < CLOSED_GRACE_MS;
 }
-// ประกาศ: เลยเดดไลน์ หรือฟอร์มที่ผูกไว้ปิดไปแล้ว > 1 วัน -> ซ่อน
-export function announcementVisible(a: { id: string; deadline_at: string; form_id: string }, forms: FormDef[], now = Date.now()): boolean {
+// ประกาศ "จบ" เมื่อไร: เดดไลน์ (หรือวันงานถ้าไม่มีเดดไลน์) ผ่านไปแล้ว หรือฟอร์มที่ผูกไว้ปิดแล้ว · null = ยังไม่จบ
+export function announcementEndedAt(a: { id: string; deadline_at: string; event_at?: string; form_id: string }, forms: FormDef[], now = Date.now()): number | null {
   const dl = a.deadline_at ? new Date(a.deadline_at).getTime() : NaN;
-  if (!isNaN(dl) && now - dl >= CLOSED_GRACE_MS) return false;
+  const ev = a.event_at ? new Date(a.event_at).getTime() : NaN;
+  const ends: number[] = [];
+  if (!isNaN(dl)) { if (dl < now) ends.push(dl); }
+  else if (!isNaN(ev) && ev < now) ends.push(ev); // ไม่มีเดดไลน์ -> จบเมื่อผ่านวันงาน
   // ฟอร์มที่ถูกลบ (เช่น ไม่ใช่งานจริง) ไม่ทำให้ประกาศหาย — ดูเฉพาะที่ปิด/เลยเดดไลน์
   const f = forms.find((x) => x.status !== "deleted" && ((a.form_id && x.form_id === a.form_id) || (x.announcement_id && x.announcement_id === a.id)));
-  return !f || formVisible(f, now);
+  if (f) { const fe = formEndedAt(f, now); if (fe !== null) ends.push(fe); }
+  return ends.length ? Math.min(...ends) : null;
+}
+// ประกาศ: ผ่านเดดไลน์/วันงาน หรือฟอร์มที่ผูกไว้ปิดไปแล้ว > 1 วัน -> ซ่อนจากหน้าหลัก (ไปอยู่ "ที่ผ่านมาแล้ว")
+export function announcementVisible(a: { id: string; deadline_at: string; event_at?: string; form_id: string }, forms: FormDef[], now = Date.now()): boolean {
+  const end = announcementEndedAt(a, forms, now);
+  return end === null || now - end < CLOSED_GRACE_MS;
 }

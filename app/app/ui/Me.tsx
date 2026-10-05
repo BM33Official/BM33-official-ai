@@ -29,8 +29,8 @@ async function compress(file: File): Promise<string> {
 type Api = (path: string, body?: unknown) => Promise<{ ok: boolean; error?: string; [k: string]: unknown }>;
 
 export default function Me({
-  data, picture, section, onSectionDone, api, refresh, toast, go, openAnn,
-}: { data: AppData; picture: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void }) {
+  data, picture, section, onSectionDone, api, refresh, toast, go, openAnn, openHistory,
+}: { data: AppData; picture: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void; openHistory: () => void }) {
   const { mine, board } = data;
   const feesRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -89,10 +89,17 @@ export default function Me({
           <Ring v={mine.forms.length ? formsDone / mine.forms.length : 1} color="#7cc4ff" label={mine.forms.length ? `${formsDone}/${mine.forms.length}` : "✓"} />
           <span>กรอกแล้ว</span>
         </div>
-        <button className="ring-it press" onClick={() => zoneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          <Ring v={z.level === "safe" ? 1 : 1 - Math.min(1, z.gauge)} color={ZONE_COLOR[z.level]} label={z.level === "safe" ? "✓" : z.level === "red" ? "RED" : `ค้าง ${z.strikes}`} />
-          <span>Red Zone</span>
-        </button>
+        {z.enabled ? (
+          <button className="ring-it press" onClick={() => zoneRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+            <Ring v={z.level === "safe" ? 1 : 1 - Math.min(1, z.gauge)} color={ZONE_COLOR[z.level]} label={z.level === "safe" ? "✓" : z.level === "red" ? "RED" : `ค้าง ${z.strikes}`} />
+            <span>Red Zone</span>
+          </button>
+        ) : (
+          <button className="ring-it press" onClick={openHistory}>
+            <Ring v={1} color="#4ade80" label="✓" />
+            <span>Green Zone</span>
+          </button>
+        )}
       </div>
 
       {/* เงินรุ่น */}
@@ -116,6 +123,12 @@ export default function Me({
               </div>
             ))}
           </div>
+          {f.months.filter((m) => m.link && ["unpaid", "overdue", "upcoming", "partial"].includes(m.state)).map((m) => (
+            <div key={m.month} className="fee-pay" style={{ marginTop: 10 }}>
+              <div className="grow"><b>{m.label}</b><small>{m.amount ? `${m.amount.toLocaleString()} บาท` : ""}{m.due ? ` · ภายใน ${thDateTime(m.due, false)}` : ""}</small></div>
+              <a className="go-btn" href={m.link} target="_blank" rel="noopener noreferrer">{m.link_label || "ชำระเงิน"}</a>
+            </div>
+          ))}
           {pendingSlips.length > 0 && (
             <div className="slip-wait"><span className="pulse-dot" style={{ color: "#fbbf24" }} />ส่งสลิปแล้ว {pendingSlips.length} ใบ · รอฝ่ายการเงินยืนยัน</div>
           )}
@@ -136,6 +149,33 @@ export default function Me({
         </div>
       )}
 
+      {/* ปิด Red Zone อยู่ = ทุกคน Green Zone · แตะดูประวัติการเรียกเก็บเงินรุ่น/งานวิชาการ */}
+      {!z.enabled && (
+        <>
+          <div ref={zoneRef} className="sect big"><h2>Green Zone</h2><span className="chip done">ทุกคนเริ่มต้นใหม่</span></div>
+          <button className="plain press green-card" style={{ textAlign: "left", width: "100%" }} onClick={openHistory}>
+            <span className="hist-dot" />
+            <span style={{ flex: 1 }}>
+              <div className="b" style={{ fontSize: 18, color: "#86efac" }}>คุณอยู่ใน Green Zone</div>
+              <div className="soft small" style={{ marginTop: 3, lineHeight: 1.5 }}>แตะเพื่อดูประวัติการเรียกเก็บเงินรุ่นและงานวิชาการของคุณ</div>
+            </span>
+            <IChevronR width={16} height={16} />
+          </button>
+          {z.exams.filter((e) => !e.accepted && e.link).length > 0 && (
+            <div className="plain zexams" style={{ marginTop: 10 }}>
+              <div className="tiny muted b" style={{ margin: "0 2px 6px" }}>ข้อสอบที่ยังไม่ได้กรอก</div>
+              {z.exams.filter((e) => !e.accepted && e.link).map((e) => (
+                <div key={e.id} className="fee-pay" style={{ marginTop: 6 }}>
+                  <div className="grow"><b>{e.name}</b>{e.date && <small>สอบ {thDateTime(e.date, false)}</small>}</div>
+                  <a className="go-btn" href={e.link} target="_blank" rel="noopener noreferrer">ไปกรอก</a>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {z.enabled && (
+        <>
       {/* red zone = ข้อสอบที่ยังไม่ได้กรอก + เงินรุ่นที่เลยกำหนด · แตะแล้วเห็นว่าค้างอะไร ไปกรอก/ยอมโดนได้เลย */}
       <div ref={zoneRef} className="sect big"><h2>Red Zone</h2><span className="chip" style={{ color: ZONE_COLOR[z.level] }}>ค้าง {z.strikes}/3</span></div>
       <div className="plain">
@@ -157,6 +197,9 @@ export default function Me({
         {z.feeMisses > 0 && <button className="zone-fee press" onClick={() => feesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>💸 เงินรุ่นที่ค้าง: {z.feeMonths.join(", ")} <IChevronR width={13} height={13} /></button>}
         <div className="tiny muted" style={{ marginTop: 12, lineHeight: 1.55 }}>ค้าง = ข้อสอบที่ยังไม่ได้กรอก + เดือนเงินรุ่นที่เลยกำหนด · 1 เฝ้าระวัง · 2 ใกล้ · 3 ขึ้นไป Red Zone · “ยอมโดน” = ยังนับอยู่ แต่กรรมการจะไม่ตามเตือนข้อสอบนั้นอีก · เห็นแค่คุณกับกรรมการที่ดูแล</div>
       </div>
+
+        </>
+      )}
 
       {myDraws.length > 0 && (
         <>
@@ -223,10 +266,10 @@ function TodayTodo({ data, go, openAnn, onFees, onZone }: { data: AppData; go: (
     const fees = mine.fees;
     if (fees.carried > 0 && !fees.outstanding) out.push({ em: "📒", t: `เงินรุ่นค้างยกมา ${fees.carried} เดือน`, s: "สอบถามยอดกับฝ่ายการเงิน", tone: "soon", on: onFees });
     if (fees.months.length && fees.outstanding > 0) {
-      out.push({ em: "💸", t: `จ่ายเงินรุ่น ${fees.outstanding.toLocaleString()} บาท`, s: fees.overdue ? "เลยกำหนดแล้ว · นับใน Red Zone" : fees.next?.due ? `ภายใน ${thDateTime(fees.next.due)}` : "แนบสลิปในแอปได้เลย", tone: fees.overdue ? "urgent" : "soon", on: onFees });
+      out.push({ em: "💸", t: `จ่ายเงินรุ่น ${fees.outstanding.toLocaleString()} บาท`, s: fees.overdue ? (mine.zone.enabled ? "เลยกำหนดแล้ว · นับใน Red Zone" : "เลยกำหนดแล้ว") : fees.next?.due ? `ภายใน ${thDateTime(fees.next.due)}` : "แนบสลิปในแอปได้เลย", tone: fees.overdue ? "urgent" : "soon", on: onFees });
     }
     const z = mine.zone;
-    if (z.level === "red" || z.level === "close") {
+    if (z.enabled && (z.level === "red" || z.level === "close")) {
       const open = z.exams.filter((e) => !e.accepted).length;
       out.push({ em: "📕", t: open ? `กรอกข้อสอบที่ค้าง (${open})` : "เคลียร์ Red Zone", s: `${z.title} · ค้าง ${z.strikes}/3`, tone: z.level === "red" ? "urgent" : "soon", on: onZone });
     }

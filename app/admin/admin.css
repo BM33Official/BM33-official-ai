@@ -443,3 +443,26 @@ details.who-col:not([open]) .who-h { margin-bottom: 0; }
 .rzf.watch { border-color: #ffd60a; background: rgba(255,214,10,.12); }
 .rzf.close { border-color: #ff9500; background: rgba(255,149,0,.12); }
 .rzf.red { border-color: #ff3b30; background: rgba(255,59,48,.1); }
+.zone-dots .d.green { background: var(--green-soft, #d1fae5); color: var(--green-ink, #047857); }
+.card.green-zone { background: linear-gradient(135deg, rgba(52,199,89,.10), rgba(52,199,89,.03)); box-shadow: inset 0 0 0 1px rgba(52,199,89,.28); }
+.batch-wrap { display: flex; flex-direction: column; gap: 6px; }
+.batch-it .batch-date { margin-left: auto; flex: none; white-space: nowrap; }
+.batch-edit { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; padding: 10px 12px; border-radius: 12px; background: var(--fill); margin: 0 0 4px 36px; }
+.batch-edit label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.batch-edit input { min-width: 200px; }
+.ann-group { border-radius: 20px; padding: 12px; background: linear-gradient(180deg, rgba(0,122,255,.06), rgba(0,122,255,.02)); box-shadow: inset 0 0 0 1px rgba(0,122,255,.16); }
+.ann-group-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 2px 4px 10px; color: var(--blue); }
+.ann-group-h b { color: var(--text); font-size: 16px; }
+.ann-pick { display: flex; align-items: center; padding: 0 4px 0 14px; cursor: pointer; }
+.ann-pick input { width: 20px; height: 20px; accent-color: var(--blue); }
+.ann-row.picked { box-shadow: 0 0 0 2px var(--blue), var(--shadow); }
+.ann-bar { flex-wrap: wrap; align-items: center; }
+.ann-search { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 11px; background: #e3e3e8; color: var(--muted); }
+.ann-search input { border: 0; background: transparent; padding: 7px 0; width: 120px; box-shadow: none; }
+.img-pick { width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 22px 14px; border-radius: 16px; border: 2px dashed var(--line); background: var(--fill); color: var(--muted); cursor: pointer; font-family: inherit; transition: border-color .2s, background .2s; }
+.img-pick:hover, .img-pick.drag { border-color: var(--blue); background: rgba(0,122,255,.06); color: var(--blue); }
+.img-pick b { color: var(--text); font-size: 14px; }
+.img-pick small { font-size: 12px; }
+.img-pick.has { flex-direction: row; justify-content: flex-start; gap: 14px; padding: 10px; border-style: solid; cursor: default; }
+.img-pick.has img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; }
+.linkish { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }

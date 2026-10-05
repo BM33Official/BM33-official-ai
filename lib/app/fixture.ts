@@ -19,25 +19,41 @@ export function applyFixture<T extends State>(s: T, opts: { draw?: string } = {}
       id: "AN-FX1", title: "ส่งฟอร์มเลือกวิชาเลือกเสรี", summary: "ทุกคนต้องเลือกวิชาเลือกเสรีเทอมหน้า 2 วิชา ผ่านฟอร์มของคณะ ภายในพรุ่งนี้ 23:59 น.",
       body: "@All 📢 รบกวนเพื่อน ๆ ทุกคนกรอกฟอร์มเลือกวิชาเลือกเสรีเทอมหน้าด้วยน้าาา เลือกได้ 2 วิชา\nปิดพรุ่งนี้ 23:59 น. นะค้าบ ใครกรอกแล้วข้ามได้เลย 🙏\nhttps://forms.gle/example-elective",
       author: "ไปร์ท", author_role: "ประธานรุ่น", category: "ฟอร์ม/เอกสาร", deadline_at: at(1, "23:59"), event_at: "", location: "",
-      links: [{ label: "กรอกฟอร์มเลือกวิชา", url: "https://forms.gle/example-elective" }], pinned: true, created_at: new Date(now - 5 * 3600_000).toISOString(), updated_at: "", form_id: "F-FX1", cal: "fx",
+      links: [{ label: "กรอกฟอร์มเลือกวิชา", url: "https://forms.gle/example-elective" }], pinned: true, created_at: new Date(now - 5 * 3600_000).toISOString(), updated_at: "", form_id: "F-FX1", cal: "fx", group: "", order: 0,
+    },
+    {
+      id: "AN-FX5", title: "กีฬาสี: ลงชื่อนักกีฬา", summary: "ลงชื่อแข่งกีฬาสีภายในวันศุกร์", body: "ลงชื่อนักกีฬาได้ที่ฟอร์ม", author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม",
+      deadline_at: at(3, "18:00"), event_at: "", location: "", links: [], pinned: false, created_at: new Date(now - 7 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "กีฬาสี 2569", order: 1,
+    },
+    {
+      id: "AN-FX6", title: "กีฬาสี: ซ้อมเชียร์", summary: "ซ้อมเชียร์ทุกวันอังคาร 17:00", body: "ซ้อมเชียร์", author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม",
+      deadline_at: "", event_at: at(6, "17:00"), location: "ลานกิจกรรม", links: [], pinned: false, created_at: new Date(now - 8 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "กีฬาสี 2569", order: 2,
+    },
+    {
+      id: "AN-FX7", title: "กีฬาสี: วันแข่งจริง", summary: "แข่ง 2 วัน ที่สนามกีฬามหาวิทยาลัย", body: "วันแข่ง", author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม",
+      deadline_at: "", event_at: at(24, "08:00"), location: "สนามกีฬา", links: [], pinned: false, created_at: new Date(now - 9 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "กีฬาสี 2569", order: 3,
     },
     {
       id: "AN-FX2", title: "ต้อนรับน้องปี 1 — รับสมัครสตาฟ", summary: "รับสตาฟงานต้อนรับน้อง 12 คน ซ้อมวันศุกร์นี้ 17:00 ที่ลานกิจกรรม สมัครในฟอร์มภายในพฤหัส",
       body: "ฝ่ายกิจการภายในรับสมัครสตาฟงานต้อนรับน้องปี 1 จำนวน 12 คน 🎉 ซ้อมครั้งแรกศุกร์นี้ 17:00 น. ลานกิจกรรมตึกเรียนรวม\nสมัครได้ที่ https://forms.gle/example-staff",
       author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม", deadline_at: at(4, "18:00"), event_at: at(5, "17:00"), location: "ลานกิจกรรม อาคารเรียนรวม",
-      links: [{ label: "สมัครสตาฟ", url: "https://forms.gle/example-staff" }], pinned: false, created_at: new Date(now - 26 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
+      links: [{ label: "สมัครสตาฟ", url: "https://forms.gle/example-staff" }], pinned: false, created_at: new Date(now - 26 * 3600_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "", order: 0,
     },
     {
       id: "AN-FX3", title: "เงินรุ่นเดือนตุลาคม 300 บาท", summary: "เงินรุ่น ต.ค. 300 บาท/คน โอนพร้อมเพย์แล้วแจ้งสลิปในฟอร์ม ภายใน 15 ต.ค.",
       body: "เงินรุ่นเดือนตุลาคมคนละ 300 บาทน้า 💸 โอนพร้อมเพย์แล้วแนบสลิปในฟอร์มภายใน 15 ต.ค. ค่ะ ใครจ่ายรายปีแล้วไม่ต้องจ่ายนะคะ",
       author: "เค้ก", author_role: "ฝ่ายการเงิน", category: "การเงิน", deadline_at: at(18, "23:59"), event_at: "", location: "",
-      links: [{ label: "แจ้งโอน", url: "https://forms.gle/example-pay" }], pinned: false, created_at: new Date(now - 3 * 86_400_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
+      links: [{ label: "แจ้งโอน", url: "https://forms.gle/example-pay" }], pinned: false, created_at: new Date(now - 3 * 86_400_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "", order: 0,
     },
     {
       id: "AN-FX4", title: "ปรับห้องเรียน Immunology วันพุธ", summary: "คาบ Immunology วันพุธย้ายไปห้อง 702 ชั้น 7 อาคารเรียนรวม เวลาเดิม",
       body: "แจ้งเปลี่ยนห้องเรียน Immunology วันพุธนี้ย้ายไปห้อง 702 ชั้น 7 นะครับ เวลาเดิม 09:00", author: "นาย", author_role: "ฝ่ายวิชาการ",
-      category: "วิชาการ", deadline_at: "", event_at: at(2, "09:00"), location: "ห้อง 702 อาคารเรียนรวม", links: [], pinned: false, created_at: new Date(now - 50 * 60_000).toISOString(), updated_at: "", form_id: "", cal: "fx",
+      category: "วิชาการ", deadline_at: "", event_at: at(2, "09:00"), location: "ห้อง 702 อาคารเรียนรวม", links: [], pinned: false, created_at: new Date(now - 50 * 60_000).toISOString(), updated_at: "", form_id: "", cal: "fx", group: "", order: 0,
     },
+  ];
+  board.past = [
+    { id: "AN-PX1", title: "ส่งรูปถ่ายติดบัตร (ปิดแล้ว)", summary: "", body: "ปิดรับแล้ว", author: "ไปร์ท", author_role: "ประธานรุ่น", category: "ฟอร์ม/เอกสาร", deadline_at: at(-3, "23:59"), event_at: "", location: "", links: [], pinned: false, created_at: new Date(now - 9 * 86_400_000).toISOString(), updated_at: "", form_id: "", cal: "", group: "", order: 0 },
+    { id: "AN-PX2", title: "ไหว้ครู 2569", summary: "", body: "จบงานแล้ว ขอบคุณทุกคน", author: "อิ่ม", author_role: "ฝ่ายกิจการภายใน", category: "กิจกรรม", deadline_at: "", event_at: at(-6, "09:00"), location: "", links: [], pinned: false, created_at: new Date(now - 14 * 86_400_000).toISOString(), updated_at: "", form_id: "", cal: "", group: "", order: 0 },
   ];
   board.forms = [
     { id: "F-FX1", name: "ฟอร์มเลือกวิชาเลือกเสรี", deadline_at: at(1, "23:59"), link: "https://forms.gle/example-elective", description: "กรอกทุกคน · ใช้เวลา 2 นาที", type: "form", closed: false },
@@ -76,11 +92,20 @@ export function applyFixture<T extends State>(s: T, opts: { draw?: string } = {}
   const labels = ["ก.ค. 69", "ส.ค. 69", "ก.ย. 69", "ต.ค. 69", "พ.ย. 69", "ธ.ค. 69"];
   const states = ["paid", "paid", "paid", "unpaid", "upcoming", "upcoming"];
   mine.fees = {
-    months: months.map((m, i) => ({ month: m, label: labels[i], amount: i === 3 ? 300 : 300, due: i === 3 ? at(18, "23:59") : "", state: states[i], paid_at: "", note: "" })),
+    months: [...months.map((m, i) => ({ month: m, label: labels[i], amount: 300, due: i === 3 ? at(18, "23:59") : "", state: states[i], paid_at: "", note: "", link: i === 3 ? "https://forms.gle/example-pay" : "", link_label: "ชำระเงินรุ่น", created_at: `${m}-01T03:00:00.000Z` })),
+      { month: "2026-10-shrt", label: "ค่าเสื้อรุ่น", amount: 450, due: at(10, "23:59"), state: "unpaid", paid_at: "", note: "", link: "https://forms.gle/example-shirt", link_label: "สั่ง+ชำระค่าเสื้อ", created_at: new Date(now - 86_400_000).toISOString() }],
     outstanding: 300, overdue: 0, paidCount: 3, yearly: false,
     next: { month: "2026-10", label: "ต.ค. 69", amount: 300, due: at(18, "23:59"), state: "unpaid", paid_at: "", note: "" },
   };
-  mine.zone = { misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], feeMisses: 1, feeMonths: ["ก.ย. 69"], strikes: 3, exams: [{ id: "EX-FX1", name: "Genetics II", link: "https://docs.google.com/document/d/example-genetics", date: "2026-09-21", accepted: false }, { id: "EX-FX2", name: "Immune Quiz 1", link: "https://docs.google.com/document/d/example-immune", date: "2026-09-14", accepted: true }], gauge: 1, level: "red", title: "อยู่ใน Red Zone", text: "ค้างตั้งแต่ 3 อย่างขึ้นไป ค่อย ๆ เคลียร์ทีละอย่าง เดี๋ยวก็หลุดโซน 💪" };
+  mine.zone = { misses: 2, missedExams: ["Genetics II", "Immune Quiz 1"], feeMisses: 1, feeMonths: ["ก.ย. 69"], strikes: 3, exams: [{ id: "EX-FX1", name: "Genetics II", link: "https://docs.google.com/document/d/example-genetics", date: "2026-09-21", accepted: false }, { id: "EX-FX2", name: "Immune Quiz 1", link: "https://docs.google.com/document/d/example-immune", date: "2026-09-14", accepted: true }], gauge: 1, level: "red", title: "อยู่ใน Red Zone", text: "ค้างตั้งแต่ 3 อย่างขึ้นไป ค่อย ๆ เคลียร์ทีละอย่าง เดี๋ยวก็หลุดโซน 💪", enabled: process.env.APP_FIXTURE_RED === "1" };
+  if (!(mine.zone as { enabled: boolean }).enabled) Object.assign(mine.zone as object, { level: "safe", title: "Green Zone", text: "ทุกคนเริ่มต้นใหม่" });
+  mine.history = process.env.APP_FIXTURE_EMPTY === "1" ? [] : [
+    { kind: "fee", id: "2026-10-shrt", title: "ค่าเสื้อรุ่น", at: new Date(now - 86_400_000).toISOString(), state: "unpaid", amount: 450, due: at(10, "23:59"), link: "https://forms.gle/example-shirt", link_label: "สั่ง+ชำระค่าเสื้อ" },
+    { kind: "fee", id: "2026-10", title: "ต.ค. 69", at: "2026-10-01T03:00:00.000Z", state: "unpaid", amount: 300, due: at(18, "23:59"), link: "https://forms.gle/example-pay", link_label: "ชำระเงินรุ่น" },
+    { kind: "exam", id: "EX-FX1", title: "Genetics II", at: "2026-09-21", state: "missing", amount: 0, due: "2026-09-21", link: "https://docs.google.com/document/d/example-genetics", link_label: "เอกสาร" },
+    { kind: "fee", id: "2026-09", title: "ก.ย. 69", at: "2026-09-01T03:00:00.000Z", state: "paid", amount: 300, due: "", link: "", link_label: "" },
+    { kind: "exam", id: "EX-FX2", title: "Immune Quiz 1", at: "2026-09-14", state: "ok", amount: 0, due: "2026-09-14", link: "", link_label: "" },
+  ];
   if (opts.draw) {
     const show = opts.draw === "reveal" ? now - 120_000 : now - 20_000;
     const reveal = opts.draw === "reveal" ? now - 10_000 : now + 70_000;

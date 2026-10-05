@@ -37,7 +37,8 @@ export async function personalBlock(studentId: string): Promise<string> {
   }
   const r = rank.rows.find((x) => x.student_id === sid);
   if (r) {
-    lines.push(`Red zone ของฉัน: ${LEVEL_TH[r.level]} · ยังไม่ได้จำ ${r.misses} ครั้ง${r.missedExams.length ? ` (${r.missedExams.join(", ")})` : ""}${r.feeMisses ? ` · เงินรุ่นเลยกำหนด ${r.feeMonths.join(", ")}` : ""} (red zone นับทั้งข้อสอบที่ยังไม่ได้จำและเงินรุ่นที่เลยกำหนด)`);
+    if (!rank.enabled) lines.push(`Red zone: ตอนนี้ระบบปิด Red Zone อยู่ ทุกคนอยู่ Green Zone (เริ่มต้นใหม่) · ยังไม่ได้กรอกข้อสอบ ${r.misses} ครั้ง${r.missedExams.length ? ` (${r.missedExams.join(", ")})` : ""}`);
+    else lines.push(`Red zone ของฉัน: ${LEVEL_TH[r.level]} · ยังไม่ได้จำ ${r.misses} ครั้ง${r.missedExams.length ? ` (${r.missedExams.join(", ")})` : ""}${r.feeMisses ? ` · เงินรุ่นเลยกำหนด ${r.feeMonths.join(", ")}` : ""} (red zone นับทั้งข้อสอบที่ยังไม่ได้จำและเงินรุ่นที่เลยกำหนด)`);
   }
   for (const d of draws) {
     if (!d.inPool) continue;
@@ -71,6 +72,6 @@ export async function adminBlock(): Promise<string> {
     lines.push(`ฟอร์ม ${f.name}: ยังไม่ทำ ${undone.length} คน (เฉพาะคนที่ลงทะเบียนแล้ว)${undone.length ? `: ${undone.join(", ")}` : ""}`);
   }
   const red = rank.rows.filter((r) => r.level === "red");
-  lines.push(`Red zone ตอนนี้: ${red.length ? red.map((r) => `${r.nickname}(${r.misses})`).join(", ") : "ไม่มี"}`);
+  lines.push(!rank.enabled ? "Red zone ตอนนี้: ปิดระบบอยู่ (ทุกคน Green Zone)" : `Red zone ตอนนี้: ${red.length ? red.map((r) => `${r.nickname}(${r.misses})`).join(", ") : "ไม่มี"}`);
   return lines.join("\n");
 }

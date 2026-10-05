@@ -84,7 +84,7 @@ export async function submitSlip(opts: { studentId: string; imageBase64: string;
   let verdict: "ok" | "check" | "bad" = "ok";
 
   // เลือกเดือน: ที่สมาชิกเลือก > เดือนที่ยอดตรง > เดือนค้างที่เก่าสุด
-  let month = opts.month && /^\d{4}-\d{2}$/.test(opts.month) ? opts.month : "";
+  let month = opts.month && /^\d{4}-\d{2}(-[a-z0-9]{2,8})?$/.test(opts.month) ? opts.month : "";
   const amount = Math.round(read.amount * 100) / 100;
   if (!month) {
     const exact = owed.find((m) => m.amount === amount);

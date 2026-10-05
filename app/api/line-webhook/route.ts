@@ -53,14 +53,12 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-// กลุ่มที่อนุญาตให้บอทเรียนรู้ (ว่าง = ทุกกลุ่ม)
-function learnGroups(): string[] {
-  return (process.env.LEARN_GROUP_IDS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-}
-function shouldLearn(groupId: string | undefined): boolean {
+// กลุ่มที่อนุญาตให้บอทเรียนรู้ — ตั้งใน control center (config learn_groups): "*" = ทุกกลุ่มที่บอทอยู่
+// ว่าง = ใช้ env LEARN_GROUP_IDS แบบเดิม (ว่างทั้งคู่ = ทุกกลุ่ม)
+async function shouldLearn(groupId: string | undefined): Promise<boolean> {
   if (!groupId) return false;
-  const gs = learnGroups();
-  return gs.length === 0 || gs.includes(groupId);
+  const [{ getConfigValue }, { learnsFrom }] = await Promise.all([import("@/lib/bc/config"), import("@/lib/bc/groups")]);
+  return learnsFrom(groupId, await getConfigValue("learn_groups").catch(() => ""));
 }
 
 async function handleEvent(event: webhook.Event): Promise<void> {
@@ -68,6 +66,14 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     const s = event.source;
     const gid = s?.type === "group" ? s.groupId : s?.type === "room" ? s.roomId : undefined;
     log.info("bot_joined_group", { groupId: gid ?? "-" });
+    // จำกลุ่มไว้ (หน้า ตั้งค่า > กลุ่ม LINE) — บอทยังเงียบในกลุ่มเหมือนเดิม ไม่ทักทาย
+    if (gid) await import("@/lib/bc/groups").then((m) => m.noteGroup(gid, "join")).catch(() => {});
+    return;
+  }
+  if (event.type === "leave") {
+    const s = event.source;
+    const gid = s?.type === "group" ? s.groupId : s?.type === "room" ? s.roomId : undefined;
+    if (gid) await import("@/lib/bc/groups").then((m) => m.noteGroup(gid, "leave")).catch(() => {});
     return;
   }
 
@@ -103,7 +109,7 @@ async function handleEvent(event: webhook.Event): Promise<void> {
 
   // ── รูปภาพในกลุ่ม: เก็บคำบรรยาย (+ ถ้ากรรมการโพสต์ประกาศเป็นรูป -> เข้าแอป) ─────
   if (message.type === "image") {
-    if (isGroup && shouldLearn(groupId) && process.env.LEARN_IMAGES !== "0") {
+    if (isGroup && (await shouldLearn(groupId)) && process.env.LEARN_IMAGES !== "0") {
       await learnImage(message.id, groupId!, userId);
     }
     // แชตส่วนตัว: รูปสลิปโอนเงินรุ่น -> AI อ่าน -> รอฝ่ายการเงินยืนยัน
@@ -130,10 +136,13 @@ async function handleEvent(event: webhook.Event): Promise<void> {
     if (tasks) return;
   }
 
-  if (isGroup) log.info("group_message", { groupId: groupId ?? "-" });
+  if (isGroup) {
+    log.info("group_message", { groupId: groupId ?? "-" });
+    await import("@/lib/bc/groups").then((m) => m.noteGroup(groupId!, "message")).catch(() => {});
+  }
 
   // ── บันทึกข้อความกลุ่มลง buffer (await — กันหายตอน Vercel ปิด function) ──────
-  if (isGroup && shouldLearn(groupId)) {
+  if (isGroup && (await shouldLearn(groupId))) {
     const name = await groupDisplayName(groupId!, userId);
     await logMessage({
       messageId: message.id,

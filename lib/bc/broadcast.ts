@@ -39,17 +39,20 @@ export function buildMessages(b: Broadcast, m?: Member): Msg[] {
     if (body) msgs.push({ type: "text", text: body });
     return msgs.length ? msgs : [{ type: "text", text: title || " " }];
   }
+  // แนบรูปไปกับการ์ด/ข้อความ: รูปขึ้นก่อน แล้วตามด้วยข้อความ (นับเป็น 1 ข้อความต่อคนเหมือนเดิม)
+  const pic = (b.image_url ?? "").trim();
+  const withPic = (msgs: Msg[]): Msg[] => (/^https:\/\//i.test(pic) ? [{ type: "image", originalContentUrl: pic, previewImageUrl: pic }, ...msgs] : msgs);
   if (b.message_type === "flex") {
-    return [broadcastFlex({
+    return withPic([broadcastFlex({
       title,
       body,
       headerColor: b.header_color,
       buttonLabel: b.button_label,
       buttonAction: b.button_action,
       buttonValue: b.button_value,
-    })];
+    })]);
   }
-  return [{ type: "text", text: body || title || " " }];
+  return withPic([{ type: "text", text: body || title || " " }]);
 }
 
 // นับผู้รับ (ไม่ส่ง) — สำหรับ UI
@@ -68,7 +71,7 @@ export async function sendBroadcast(
 ): Promise<SendResult> {
   const testMode = b.test_mode === "1";
   // รูปภาพต้องเป็น https (ข้อกำหนดของ LINE)
-  if (b.message_type === "image") {
+  if (b.message_type === "image" || (b.image_url ?? "").trim()) {
     const url = (b.image_url ?? "").trim();
     if (!/^https:\/\//i.test(url)) {
       return { ok: false, count: 0, testMode, blocked: "รูปภาพต้องเป็นลิงก์ https:// ที่เปิดดูได้ (เช่นจาก Google Drive แบบแชร์รูปตรง หรือ imgur)" };

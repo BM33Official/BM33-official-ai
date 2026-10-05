@@ -60,6 +60,8 @@ export async function createAnnouncement(input: Partial<Announcement>, opts: { a
     updated_at: nowISO(),
     reminders: input.reminders ?? "{}",
     form_id: input.form_id ?? "",
+    group_name: input.group_name ?? "",
+    sort_order: input.sort_order ?? "",
   });
   if (opts.autoForm !== false && !input.form_id) {
     const fid = await syncForm({ id, title: input.title ?? "", summary: input.summary ?? "", deadline_at: input.deadline_at ?? "", links: input.links ?? "[]", status: input.status ?? "live" });
@@ -84,6 +86,31 @@ export async function updateAnnouncement(id: string, patch: Partial<Announcement
   const n = { ...a, ...patch };
   await syncForm({ id: n.id, title: n.title, summary: n.summary, deadline_at: n.deadline_at, links: n.links, status: n.status });
   return true;
+}
+
+// แก้หลายประกาศพร้อมกัน (เลือกหลายอัน -> จัดชุด/ซ่อน/ปักหมุด/เรียงลำดับ) — อ่านสด 1 ครั้ง + เขียนรวดเดียว
+export async function bulkUpdateAnnouncements(changes: { id: string; patch: Partial<Announcement> }[]): Promise<number> {
+  if (!changes.length) return 0;
+  const { batchUpdateRanges, colLetter } = await import("@/lib/google-sheets");
+  const { TABS, HEADERS } = await import("@/lib/bc/types");
+  const { bust } = await import("@/lib/cache");
+  const all = await readAnnouncements(true);
+  const headers = HEADERS.announcements;
+  const last = colLetter(headers.length);
+  const updates: { range: string; values: string[][] }[] = [];
+  const resync: Announcement[] = [];
+  for (const c of changes) {
+    const a = all.find((x) => x.id === c.id);
+    if (!a?.__row) continue;
+    const n = { ...a, ...c.patch, updated_at: nowISO() } as Announcement;
+    updates.push({ range: `'${TABS.announcements}'!A${a.__row}:${last}${a.__row}`, values: [headers.map((h) => String((n as unknown as Record<string, unknown>)[h] ?? ""))] });
+    if (c.patch.status !== undefined || c.patch.deadline_at !== undefined) resync.push(n);
+  }
+  await batchUpdateRanges(updates);
+  bust("bc");
+  // ซ่อน/ขึ้นแอป/เปลี่ยนเดดไลน์ -> "สิ่งที่ต้องกรอก" ที่ผูกไว้ตามไปด้วย
+  for (const n of resync) await syncForm({ id: n.id, title: n.title, summary: n.summary, deadline_at: n.deadline_at, links: n.links, status: n.status });
+  return updates.length;
 }
 
 // ── AI: ถอดข้อความเป็นประกาศ ──────────────────────────────────────────────────

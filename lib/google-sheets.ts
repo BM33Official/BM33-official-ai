@@ -226,6 +226,18 @@ export async function deleteRow(title: string, rowNumber: number): Promise<void>
 }
 
 // อ่านทั้งแท็บ (แถวแรก = header) คืน records เป็น object[] + เลขแถวจริง
+// ลบหลายแถวติดกัน (startRow..endRow รวมปลาย, 1-indexed) ใน request เดียว — ห้ามแตะ header
+export async function deleteRows(title: string, startRow: number, endRow: number): Promise<void> {
+  const sheetId = await sheetIdByTitle(title);
+  if (sheetId == null || startRow < 2 || endRow < startRow) return;
+  await withRetry(() =>
+    client().spreadsheets.batchUpdate({
+      spreadsheetId: SHEET_ID,
+      requestBody: { requests: [{ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: startRow - 1, endIndex: endRow } } }] },
+    })
+  );
+}
+
 export interface SheetRow {
   __row: number; // เลขแถวจริงในชีต (1-indexed)
   [key: string]: string | number;

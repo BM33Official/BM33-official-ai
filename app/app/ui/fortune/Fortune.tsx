@@ -104,6 +104,7 @@ export default function FortuneScreen({
 
   const pull = useCallback(async () => {
     if (busy) return;
+    sound.unlock(); // ต้องอยู่ในจังหวะแตะ (ก่อน await ใด ๆ) ไม่งั้นมือถือไม่ยอมเล่นเสียง
     setBusy(true);
     haptic(20);
     // ── ตัดสินผลก่อน แล้วค่อยเล่นคัตซีนให้ตรงผล ──
@@ -179,7 +180,7 @@ export default function FortuneScreen({
     <div className="col dash ft">
       <div className="dash-head">
         <div><div className="when">ดูดวงรายวันของรุ่น</div><h1 className="ft-title">เซียมซีมังกร</h1></div>
-        <button className="icon-bubble press" onClick={() => setSoundOn((v) => !v)} aria-label="เสียง"><ISound filled={soundOn} /></button>
+        <button className="icon-bubble press" onClick={() => { const v = !soundOn; setSoundOn(v); sound.enabled = v; if (v) sound.unlock(); }} aria-label="เสียง"><ISound filled={soundOn} /></button>
       </div>
 
       {/* หอเกียรติยศวันนี้ */}

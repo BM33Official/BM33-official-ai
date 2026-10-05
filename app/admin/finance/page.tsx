@@ -17,6 +17,7 @@ import RedZoneFees from "../ui/RedZoneFees";
 import FeeCarry from "../ui/FeeCarry";
 import LiveSync from "../ui/LiveSync";
 import { ranking, overdueFees, redZoneFeeRule, feeCarry } from "@/lib/bc/academic";
+import { Megaphone, ShieldCheck } from "lucide-react";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export default async function FinancePage() {
     sid: r.student_id, nickname: r.nickname || r.full_name, name: r.full_name,
     cells: Object.fromEntries(months.map((m) => [m.month, matrix.cell(r.student_id, m.month)])),
   }));
-  const monthsLite = months.map((m) => ({ month: m.month, label: m.label || monthLabel(m.month), amount: m.amount, due_date: m.due_date, note: m.note }));
+  const monthsLite = months.map((m) => ({ month: m.month, label: m.label || monthLabel(m.month), amount: m.amount, due_date: m.due_date, note: m.note, link: m.link ?? "", link_label: m.link_label ?? "" }));
   const thisMonth = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 7);
   const initial = months.find((m) => m.month === thisMonth)?.month ?? months.filter((m) => m.month <= thisMonth).at(-1)?.month ?? months[0]?.month ?? "";
   const pending = slips.filter((s) => s.status === "pending").reverse().map((s) => ({
@@ -57,11 +58,23 @@ export default async function FinancePage() {
         </>
       )}
 
+      <h2 className="row" style={{ gap: 10 }}><Sq icon={Megaphone} tone="green" /> เรียกเก็บเงินรุ่น</h2>
+      <FeeMonths months={monthsLite} />
+
       <h2 className="row" style={{ gap: 10 }}><Sq icon={CalendarRange} tone="teal" /> ใครจ่ายแล้วบ้าง</h2>
       <FinanceBoard months={monthsLite} initial={initial} rows={rows.map((r) => ({ sid: r.sid, nickname: r.nickname, cells: r.cells }))} />
 
-      <h2 className="row" style={{ gap: 10 }}><Sq icon={Flame} tone="red" /> Red Zone จากเงินรุ่น {overdueRows.length > 0 && <span className="badge b-red">{overdueRows.length} คน</span>}</h2>
-      <RedZoneFees on={rule.on} weight={rule.weight} rows={overdueRows} />
+      {rank.enabled ? (
+        <>
+          <h2 className="row" style={{ gap: 10 }}><Sq icon={Flame} tone="red" /> Red Zone จากเงินรุ่น {overdueRows.length > 0 && <span className="badge b-red">{overdueRows.length} คน</span>}</h2>
+          <RedZoneFees on={rule.on} weight={rule.weight} rows={overdueRows} />
+        </>
+      ) : (
+        <div className="card flat green-zone row" style={{ gap: 12, marginTop: 18 }}>
+          <Sq icon={ShieldCheck} tone="green" />
+          <div className="hint" style={{ flex: 1 }}><b style={{ color: "var(--text)" }}>Green Zone</b> — ปิด Red Zone อยู่ เงินรุ่นที่ค้างยังไม่ถูกนับเป็นโซน · เพื่อนเห็นยอดที่ต้องจ่าย + ปุ่มชำระในแอปตามปกติ</div>
+        </div>
+      )}
 
       <h2 className="row" style={{ gap: 10 }}><Sq icon={History} tone="orange" /> ค้างยกมา (กรอกเอง ไม่ต้องเริ่มใหม่) {carry.size > 0 && <span className="badge b-orange">{carry.size} คน</span>}</h2>
       <FeeCarry people={carryPeople} initial={Object.fromEntries(carry)} />
@@ -69,10 +82,6 @@ export default async function FinancePage() {
       <h2 className="row" style={{ gap: 10 }}><Sq icon={Landmark} tone="green" /> บัญชีรับเงิน & การตรวจสลิป</h2>
       <FinanceSettings cfg={cfg} />
 
-      <details className="more" style={{ marginTop: 22 }}>
-        <summary><CalendarRange size={16} /> ตั้งยอดแต่ละเดือน</summary>
-        <div style={{ marginTop: 10 }}><FeeMonths months={monthsLite} /></div>
-      </details>
       {months.length > 0 && (
         <details className="more">
           <summary><Table2 size={16} /> ตารางทุกเดือน (แก้หลายเดือนพร้อมกัน / จ่ายรายปี)</summary>
