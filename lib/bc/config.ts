@@ -18,6 +18,7 @@ export type ConfigKey =
   | "rich_menu_v2_id"
   | "rich_menu_v3_id"
   | "rich_menu_v4_id"
+  | "rich_menu_v5_id" // เมนู LINE v5 (Green Zone · 2026-10-06)
   | "ai_budget_usd" // งบ AI ต่อเดือน (ดอลลาร์) — ค่าเริ่มต้น 10
   | "ai_price_json" // {"in":0.5,"cached":0.05,"out":3} ดอลลาร์ต่อ 1M token
   | "ai_user_daily_cap" // คำถามต่อคนต่อวัน (ค่าเริ่มต้น 30)

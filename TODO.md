@@ -10,6 +10,10 @@
 - [x] ข้อความ LINE ขั้นสูง: upload image (client shrinks ≤1MB) → `BC_media` chunks → `/api/media/<id>.jpg` (public, immutable cache) · image can be attached to card/text too
 - [x] AI page: คำถามล่าสุด sort (ล่าสุด/เก่าสุด/ตอบไม่ได้ก่อน/ตามคน) + filter + search (400 rows)
 - [x] typecheck · build · `scripts/test-flows.ts` 31/31 · screenshots (app + admin)
+- [x] v7.1 (commit 7eff3e0): wheel riser = soft chime shimmer (old sawtooth sweep sounded like a motorbike) · no "แตก" wording · daily summary card (time-of-day hero, ด่วน/วันนี้/ข้างหน้า counts, coloured timeline) · ประกาศ "ทุกคนต้องกรอก" switch (+bulk) with who ticked / not / unregistered + remind · app "วิธีใช้" spotlight tour (auto once, `bm33.tour.v1`) · LINE profile picture + name synced (session returns profile + liff.getProfile, cached) · tests 34/34
+- [x] Rich menu **v5** image (`public/rich-menu-v5.jpg`, from `rich-menu/menu-v5.html`): Green Zone wording · config `rich_menu_v5_id`
+- [ ] **User:** Settings → เมนู LINE → สร้างเมนู → ลองกับบัญชีฉัน → เปิดใช้กับทุกคน (puts the green v5 menu live)
+- [ ] **User:** save the app logo as `launch-poster/logo.png` → re-render `launch-poster/poster2.html`
 - [ ] **User:** run `npx tsx scripts/reset-launch.ts ../backups/reset-before-launch.json --apply` (backs up then wipes trial fee months/payments/exams/slip, sets red_zone_enabled=0, learn_groups=*) — blocked for Claude by the permission check
 - [ ] **User (tomorrow):** add bot to the main group → Settings → กลุ่ม LINE ของบอท → check it shows "เก็บอยู่" → press "ให้บอทออก" on the beta group · ask ใบเตย, พิมพ์, แบง to register with the bot
 
