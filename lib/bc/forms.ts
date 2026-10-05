@@ -60,9 +60,10 @@ export const FORM_URL = /(forms\.gle\/|docs\.google\.com\/forms\/|forms\.office\
 
 export async function syncFormFromAnnouncement(a: { id: string; title: string; summary: string; deadline_at: string; links: { label: string; url: string }[]; status?: string }): Promise<string | null> {
   const link = a.links.find((l) => FORM_URL.test(l.url))?.url;
-  if (!link) return null;
   const forms = await readForms(true);
-  const existing = forms.find((f) => f.announcement_id === a.id || (f.link && f.link === link));
+  // รายการที่ผูกกับประกาศนี้อยู่แล้ว (รวมที่แอดมินติ๊ก "ทุกคนต้องกรอก" เองแม้ไม่มีลิงก์ฟอร์ม) -> ตามเดดไลน์/การซ่อน
+  const existing = forms.find((f) => f.announcement_id === a.id) ?? (link ? forms.find((f) => f.link && f.link === link) : undefined);
+  if (!existing && !link) return null;
   if (existing) {
     // ประกาศถูกแก้เดดไลน์/ซ่อน -> ตามไปด้วย (เฉพาะรายการที่ระบบสร้าง)
     if (existing.source === "auto") {
@@ -76,8 +77,30 @@ export async function syncFormFromAnnouncement(a: { id: string; title: string; s
   if (a.status && a.status !== "live") return null;
   return addForm({
     name: a.title.slice(0, 80), type: "form", response_sheet_id: "", response_tab: "", id_column: "", done_condition: "",
+    access: "manual", deadline_at: a.deadline_at, link: link ?? "", description: a.summary.slice(0, 300), source: "auto", announcement_id: a.id,
+  });
+}
+
+// แอดมินติ๊ก "ทุกคนต้องกรอก" ที่ประกาศ -> สร้าง/เปิดรายการใน สิ่งที่ต้องกรอก (เพื่อนติ๊กในแอป = นับว่าทำแล้วทันที) · ปิด = เอาออก
+export async function setAnnouncementTodo(a: { id: string; title: string; summary: string; deadline_at: string; links: { label: string; url: string }[]; form_id: string }, on: boolean): Promise<string> {
+  const forms = await readForms(true);
+  const cur = forms.find((f) => (a.form_id && f.form_id === a.form_id) || f.announcement_id === a.id);
+  if (!on) {
+    if (cur) await updateForm(cur, { status: "deleted" });
+    return "";
+  }
+  if (cur) {
+    await updateForm(cur, { status: "open", trust_claims: "1", deadline_at: a.deadline_at || cur.deadline_at });
+    return cur.form_id;
+  }
+  const link = a.links.find((l) => FORM_URL.test(l.url))?.url ?? a.links[0]?.url ?? "";
+  const id = await addForm({
+    name: a.title.slice(0, 80), type: "form", response_sheet_id: "", response_tab: "", id_column: "", done_condition: "",
     access: "manual", deadline_at: a.deadline_at, link, description: a.summary.slice(0, 300), source: "auto", announcement_id: a.id,
   });
+  const f = (await readForms(true)).find((x) => x.form_id === id);
+  if (f) await updateForm(f, { trust_claims: "1" });
+  return id;
 }
 
 // ── ปิดแล้ว = โชว์ต่ออีก 1 วัน แล้วซ่อนจากแอปทั้งหมด (ประกาศไม่รก) ─────────────────

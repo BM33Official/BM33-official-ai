@@ -22,6 +22,7 @@ export function TabBar({ tab, onTab, badges }: { tab: TabKey; onTab: (t: TabKey)
         <button
           key={key}
           role="tab"
+          data-tour={`tab-${key}`}
           aria-selected={tab === key}
           className={tab === key ? "on" : ""}
           onClick={() => { if (tab !== key) haptic(); onTab(key); }}

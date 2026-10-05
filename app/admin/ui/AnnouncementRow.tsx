@@ -2,18 +2,32 @@
 import { useState } from "react";
 import { Pencil, EyeOff, Eye, Bell, Clock, CalendarDays, Bot, Send, UserPen, Pin, ChevronUp, ArrowUp, ArrowDown } from "lucide-react";
 import { act } from "./api";
+import { useRouter } from "next/navigation";
+import type { Track } from "./AnnouncementBoard";
 import AnnouncementEditor, { AnnDraft } from "./AnnouncementEditor";
 
 const CAT_COLOR: Record<string, string> = { ทั่วไป: "#007aff", การเงิน: "#34c759", วิชาการ: "#af52de", กิจกรรม: "#ff9500", "ฟอร์ม/เอกสาร": "#30b0c7", ด่วน: "#ff3b30" };
 const SRC: Record<string, { icon: typeof Bot; th: string }> = { group: { icon: Bot, th: "AI จับจากกลุ่ม" }, forward: { icon: Send, th: "ส่งผ่านบอท" }, manual: { icon: UserPen, th: "แอดมิน" } };
 
-export default function AnnouncementRow({ a, meta, forms, committee, select, move, onStatus }: {
+export default function AnnouncementRow({ a, meta, forms, committee, select, move, onStatus, track }: {
   a: AnnDraft & { id: string }; meta: { created: string; deadline: string; rel: string; source: string; reminders: string; event?: string; overdue?: boolean };
   forms: { id: string; name: string }[]; committee: { nickname: string; role: string }[];
   select?: { on: boolean; toggle: () => void }; // โหมดเลือกหลายอัน
   move?: { up?: () => void; down?: () => void }; // เรียงลำดับในชุด
   onStatus?: (status: string) => void;
+  track?: Track | null; // ทุกคนต้องกรอก -> ใครกดติ๊กแล้ว
 }) {
+  const router = useRouter();
+  const [todo, setTodo] = useState(!!track);
+  const [todoBusy, setTodoBusy] = useState(false);
+  const [who, setWho] = useState<"" | "pending" | "done" | "unreg">("");
+  async function toggleTodo(on: boolean) {
+    if (!on && !confirm("เลิกติดตามว่าใครกรอกแล้ว? (เอาออกจาก สิ่งที่ต้องกรอก ในแอป)")) return;
+    setTodo(on); setTodoBusy(true);
+    const r = await act("announce.todo", { id: a.id, on });
+    setTodoBusy(false);
+    if (!r.ok) setTodo(!on); else router.refresh();
+  }
   const [open, setOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [st, setSt] = useState(a.status);
@@ -65,6 +79,26 @@ export default function AnnouncementRow({ a, meta, forms, committee, select, mov
               {st === "live" ? <button className="btn btn-sm btn-ghost" onClick={() => toggle("hidden")}><EyeOff size={15} /> ซ่อน</button> : <button className="btn btn-sm btn-primary" onClick={() => toggle("live")}><Eye size={15} /> ขึ้นแอป</button>}
               {st === "live" && <button className="btn btn-sm" onClick={remind}><Bell size={15} /> ส่ง LINE</button>}
             </div>
+          </div>
+          <div className="todo-track">
+            <label className="row" style={{ gap: 8, cursor: "pointer", flexWrap: "nowrap" }}>
+              <span className="switch sm"><input type="checkbox" checked={todo} disabled={todoBusy} onChange={(e) => toggleTodo(e.target.checked)} /><span /></span>
+              <b style={{ fontSize: 13.5 }}>ทุกคนต้องกรอก</b>
+              <span className="hint">{todo ? "ขึ้นใน “สิ่งที่ต้องกรอก” ของทุกคน · เพื่อนกดวงกลม = กรอกแล้ว" : "เปิดเพื่อให้ทุกคนติ๊กว่าทำแล้ว และดูได้ว่าใครยังไม่ทำ"}</span>
+            </label>
+            {todo && track && (
+              <>
+                <div className="tt-bar"><i style={{ width: `${(track.done.length / Math.max(1, track.total)) * 100}%` }} /></div>
+                <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                  <button className={`chip ${who === "done" ? "on" : ""}`} onClick={() => setWho(who === "done" ? "" : "done")}>✓ กดแล้ว {track.done.length}</button>
+                  <button className={`chip ${who === "pending" ? "on" : ""}`} onClick={() => setWho(who === "pending" ? "" : "pending")}>ยังไม่กด {track.pending.length}</button>
+                  <button className={`chip ${who === "unreg" ? "on" : ""}`} onClick={() => setWho(who === "unreg" ? "" : "unreg")}>ยังไม่ลงทะเบียน {track.unreg.length}</button>
+                  {track.pending.length > 0 && <button className="btn btn-sm" onClick={async () => { const r = await act("form.remind", { id: track.formId }); setMsg(r.ok ? `เพิ่มเข้า “เตือนรวม” #${r.code} แล้ว (ส่งเฉพาะคนที่ยังไม่กด) → ไปกดส่งที่ รออนุมัติ` : `ไม่สำเร็จ: ${r.error}`); }}><Bell size={14} /> เตือนคนที่ยังไม่กด</button>}
+                </div>
+                {who && <div className="who-list">{(track[who] as string[]).map((n) => <span key={n}>{n}</span>)}{(track[who] as string[]).length === 0 && <span className="hint">ไม่มี</span>}</div>}
+              </>
+            )}
+            {todo && !track && <div className="hint">กำลังสร้างรายการ… รีเฟรชเพื่อดูตัวเลข</div>}
           </div>
           {msg && <div className="msg msg-ok">{msg}</div>}
         </div>

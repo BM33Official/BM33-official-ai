@@ -78,7 +78,7 @@ export async function POST(req: Request, { params }: { params: { action: string 
             const last = m?.last_seen_at ? new Date(m.last_seen_at).getTime() : 0;
             if (m && Date.now() - last > 6 * 3600_000) await patchMember(m, { last_seen_at: nowISO() }).catch(() => {});
           }
-          return withSession({ ok: true, step: "ready" }, signSession({ sid: r.sid, uid: who.sub }));
+          return withSession({ ok: true, step: "ready", profile: { name: who.name, picture: who.picture } }, signSession({ sid: r.sid, uid: who.sub }));
         }
         if (r.step === "confirm") {
           return NextResponse.json({ ok: true, step: "confirm", candidate: r.candidate, claim: signClaim(who.sub, r.candidate.sid), profile: { name: who.name, picture: who.picture } });

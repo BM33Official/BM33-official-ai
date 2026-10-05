@@ -5,7 +5,7 @@ import type { TabKey } from "./Chrome";
 import { initialOf } from "./Chrome";
 import { haptic } from "./useApp";
 import { IChevronR, IClock, IWallet, IShield, ISpark, ICheck } from "./icons";
-import { bkkParts, bkkDayKey, countdownParts, relativeTh, agoTh, dayDiff, thDateTime, TH_DAYS, TH_MONTHS } from "@/lib/time";
+import { bkkParts, bkkDayKey, countdownParts, relativeTh, agoTh, dayDiff, thDateTime, thTime, TH_DAYS, TH_MONTHS } from "@/lib/time";
 
 export function useNow(ms = 1000, active = true) {
   const [now, setNow] = useState(() => Date.now());
@@ -125,6 +125,54 @@ function AnnFeed({ list, sort, now, openAnn }: { list: Ann[]; sort: "due" | "new
   );
 }
 
+// ── สรุปวันนี้: หัวการ์ดตามช่วงเวลา + ตัวเลขสรุป + ไทม์ไลน์สีตามความด่วน (แตะเพื่อเปิดประกาศ) ──
+type DailyT = NonNullable<AppData["board"]["daily"]>;
+const SKY = (h: number) => (h >= 5 && h < 11 ? { icon: "☀️", label: "เช้านี้", c1: "#f59e0b", c2: "#ec4899" } : h >= 11 && h < 17 ? { icon: "🌤️", label: "บ่ายนี้", c1: "#38bdf8", c2: "#6366f1" } : h >= 17 && h < 21 ? { icon: "🌇", label: "เย็นนี้", c1: "#f97316", c2: "#8b5cf6" } : { icon: "🌙", label: "คืนนี้", c1: "#6366f1", c2: "#0ea5e9" });
+function DailyCard({ daily, now, canOpen, openAnn }: { daily: DailyT; now: number; canOpen: (id: string) => boolean; openAnn: (id: string) => void }) {
+  const sky = SKY(bkkParts(now).hh);
+  const items = daily.items;
+  const urgent = items.filter((x) => x.tone === "urgent" || (x.at && new Date(x.at).getTime() > now && dayDiff(x.at, now) <= 1)).length;
+  const today = items.filter((x) => x.at && dayDiff(x.at, now) === 0).length;
+  const later = items.filter((x) => x.at && dayDiff(x.at, now) > 1).length;
+  const toneOf = (x: DailyT["items"][number]) => (x.tone === "urgent" || (x.at && new Date(x.at).getTime() > now && dayDiff(x.at, now) <= 1) ? "hot" : x.tone === "good" ? "good" : "calm");
+  const when = (iso?: string) => {
+    if (!iso) return "";
+    const d = dayDiff(iso, now);
+    if (new Date(iso).getTime() < now) return "ผ่านไปแล้ว";
+    return d === 0 ? `วันนี้ ${thTime(iso)} น.` : d === 1 ? `พรุ่งนี้ ${thTime(iso)} น.` : `อีก ${d} วัน`;
+  };
+  return (
+    <section className="daily-card" data-tour="daily">
+      <div className="dc-hero" style={{ ["--c1" as string]: sky.c1, ["--c2" as string]: sky.c2 }}>
+        <span className="dc-icon">{sky.icon}</span>
+        <div className="dc-hh">
+          <small>สรุป{sky.label} · อัปเดต {thTime(daily.updated_at || new Date(now).toISOString())} น.</small>
+          <b>{daily.headline || "สิ่งที่ควรรู้วันนี้"}</b>
+        </div>
+      </div>
+      <div className="dc-stats">
+        <span className={urgent ? "hot" : ""}><b>{urgent}</b>ด่วน</span>
+        <span><b>{today}</b>วันนี้</span>
+        <span><b>{later}</b>ข้างหน้า</span>
+      </div>
+      <ol className="dc-line">
+        {items.map((it, i) => {
+          const open = !!it.ref && canOpen(it.ref);
+          return (
+            <li key={i} className={`dc-it ${toneOf(it)}`} style={{ animationDelay: `${i * 70}ms` }}>
+              <button className="press" disabled={!open} onClick={() => { if (open) { haptic(); openAnn(it.ref!); } }}>
+                <span className="dc-dot">{it.emoji || "•"}</span>
+                <span className="dc-b"><span className="dc-t">{it.text}</span>{it.at && <span className="dc-when">{when(it.at)}</span>}</span>
+                {open && <IChevronR width={14} height={14} />}
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
 function SetRow({ name, list, now, openAnn }: { name: string; list: Ann[]; now: number; openAnn: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const next = list.map(keyDate).filter((d) => d && new Date(d).getTime() > now).sort()[0] ?? "";
@@ -144,11 +192,11 @@ function SetRow({ name, list, now, openAnn }: { name: string; list: Ann[]; now: 
 }
 
 export default function Home({
-  data, active, picture, openAnn, go, claimForm, focus, onFocused, openHistory,
+  data, active, picture, openAnn, go, claimForm, focus, onFocused, openHistory, openTour,
 }: {
   data: AppData; active: boolean; picture: string;
   openAnn: (id: string) => void; go: (t: TabKey, section?: string) => void; claimForm: (id: string, undo?: boolean) => Promise<void>;
-  focus?: string; onFocused?: () => void; openHistory: () => void;
+  focus?: string; onFocused?: () => void; openHistory: () => void; openTour: () => void;
 }) {
   const todoRef = useRef<HTMLElement>(null);
   const annRef = useRef<HTMLElement>(null);
@@ -192,6 +240,7 @@ export default function Home({
           <div className="when">{`วัน${TH_DAYS[p.dow]}ที่ ${p.d} ${TH_MONTHS[p.m]}`}</div>
           <h1>{greeting(now)} {mine.me.nickname}</h1>
         </div>
+        <button className="help-pill press" data-tour="help" onClick={() => { haptic(); openTour(); }}>วิธีใช้</button>
         <button className="avatar press" onClick={() => go("me")} aria-label="ของฉัน">
           {picture ? <img src={picture} alt="" /> : initialOf(mine.me.nickname)}
         </button>
@@ -199,7 +248,7 @@ export default function Home({
 
       {/* นับถอยหลังสอบ — เห็นเลขวิ่งชัด แต่ไม่กินที่ */}
       {nextExam && (
-        <button className="cd press" onClick={() => go("schedule")}>
+        <button className="cd press" data-tour="exam" onClick={() => go("schedule")}>
           <div className="cd-l">
             <span className="cd-lbl">สอบถัดไป</span>
             <span className="cd-name">{nextExam.name}</span>
@@ -211,17 +260,17 @@ export default function Home({
 
       {/* สถานะส่วนตัวที่ห้ามพลาด */}
       <div className="alerts">
-        <button className={`alert press ${owe ? (fees.overdue ? "bad" : "warn") : "ok"}`} onClick={() => go("me", "fees")}>
+        <button className={`alert press ${owe ? (fees.overdue ? "bad" : "warn") : "green"}`} data-tour="fees" onClick={() => go("me", "fees")}>
           <span className="al-ic"><IWallet width={18} height={18} /></span>
-          <span className="al-t"><small>เงินรุ่น</small><b>{fees.months.length === 0 ? "ยังไม่เปิดรอบ" : owe ? `ค้าง ${fees.outstanding.toLocaleString()} ฿` : "จ่ายครบแล้ว"}</b>{owe && <em>แตะเพื่อจ่าย/ส่งสลิป</em>}</span>
+          <span className="al-t"><small>เงินรุ่น</small><b>{owe ? `ค้าง ${fees.outstanding.toLocaleString()} ฿` : fees.months.length === 0 ? "ไม่มียอดค้าง" : "จ่ายครบแล้ว"}</b>{!owe && <em>{fees.months.length === 0 ? "ยังไม่มีการเรียกเก็บ" : "ขอบคุณที่ตรงเวลา"}</em>}{owe && <em>แตะเพื่อจ่าย/ส่งสลิป</em>}</span>
         </button>
         {zone.enabled ? (
-          <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} onClick={() => go("me", "zone")}>
+          <button className={`alert press ${zone.level === "red" ? "bad" : zone.level === "close" ? "warn" : "ok"}`} data-tour="zone" onClick={() => go("me", "zone")}>
             <span className="al-ic"><IShield width={18} height={18} /></span>
             <span className="al-t"><small>Red Zone · ค้าง {zone.strikes}/3</small><b>{zone.title}</b>{zone.strikes > 0 && <em>แตะเพื่อดูว่าค้างอะไร</em>}</span>
           </button>
         ) : (
-          <button className="alert press green" onClick={openHistory}>
+          <button className="alert press green" data-tour="zone" onClick={openHistory}>
             <span className="al-ic"><IShield width={18} height={18} /></span>
             <span className="al-t"><small>สถานะของฉัน</small><b>Green Zone</b><em>แตะเพื่อดูประวัติ</em></span>
           </button>
@@ -231,7 +280,7 @@ export default function Home({
       {board.notice && <div className="notice"><span>📣</span><span className="selectable">{board.notice}</span></div>}
 
       {/* วันนี้เรียน — แถวเดียวเลื่อนได้ */}
-      <section className="panel">
+      <section className="panel" data-tour="classes">
         <div className="ph"><h2>{todays.length ? "วันนี้เรียน" : tomorrows.length ? "พรุ่งนี้เรียน" : "วันนี้"}</h2><button className="ph-more" onClick={() => go("schedule")}>ตาราง ›</button></div>
         {classes.length ? (
           <div className="cls-row">
@@ -253,7 +302,7 @@ export default function Home({
 
       {/* สิ่งที่ต้องกรอก */}
       {forms.length > 0 && (
-        <section className="panel" ref={todoRef}>
+        <section className="panel" ref={todoRef} data-tour="todo">
           <div className="ph">
             <h2>สิ่งที่ต้องกรอก {todo.length > 0 && <span className="cnt red">{todo.length}</span>}</h2>
             <span className="progress-mini"><i style={{ width: `${(done.length / Math.max(1, forms.length - ended.length)) * 100}%` }} /></span>
@@ -268,7 +317,7 @@ export default function Home({
       )}
 
       {/* ประกาศ — ใกล้ถึงก่อน / อีกนาน / ทั่วไป (หรือเรียงล่าสุด) · ชุดที่กรรมการจัดไว้ = ก้อนเดียว · ที่ผ่านไปแล้วซ่อนไว้ */}
-      <section className="panel" ref={annRef}>
+      <section className="panel" ref={annRef} data-tour="ann">
         <div className="ph">
           <h2>ประกาศ</h2>
           <span className="sort-pills">
@@ -286,16 +335,7 @@ export default function Home({
       </section>
 
       {board.daily && board.daily.items.length > 0 && (
-        <section className="panel">
-          <div className="ph"><h2><ISpark width={14} height={14} /> สรุปวันนี้</h2></div>
-          <div className="daily-mini">
-            {board.daily.items.map((it, i) => (
-              <button key={i} className="dm" onClick={() => { if (it.ref && board.announcements.some((a) => a.id === it.ref)) openAnn(it.ref); }}>
-                <span>{it.emoji}</span><span>{it.text}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+        <DailyCard daily={board.daily} now={now} canOpen={(id) => board.announcements.some((a) => a.id === id)} openAnn={openAnn} />
       )}
 
       <button className="fortune-row press" onClick={() => go("fortune")}>

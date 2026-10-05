@@ -114,18 +114,26 @@ export const sound = {
     const ng = a.createGain(); ng.gain.setValueAtTime(0.35 * power, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
     n.connect(f).connect(ng).connect(a.destination); n.start(t);
   },
+  // บิลด์อัปก่อนเปิดผล: ระฆังแก้วไล่โน้ตขึ้นเบา ๆ + ลมประกาย (เดิมเป็น sawtooth กวาดความถี่ = เหมือนเสียงเร่งเครื่องมอเตอร์ไซค์)
   riser(dur: number) {
     if (!this.enabled) return;
     const a = audio(); if (!a) return;
     const t = a.currentTime;
-    const o = a.createOscillator(), o2 = a.createOscillator(), f = a.createBiquadFilter(), g = a.createGain();
-    o.type = "sawtooth"; o2.type = "sawtooth";
-    o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(420, t + dur);
-    o2.frequency.setValueAtTime(91.5, t); o2.frequency.exponentialRampToValueAtTime(424, t + dur);
-    f.type = "lowpass"; f.frequency.setValueAtTime(250, t); f.frequency.exponentialRampToValueAtTime(4200, t + dur); f.Q.value = 6;
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + dur * 0.85); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
-    o.connect(f); o2.connect(f); f.connect(g).connect(a.destination);
-    o.start(t); o2.start(t); o.stop(t + dur + 0.1); o2.stop(t + dur + 0.1);
+    const scale = [523.25, 587.33, 659.25, 783.99, 880, 1046.5, 1174.66, 1318.5, 1567.98, 1760];
+    const steps = Math.max(4, Math.min(14, Math.round(dur * 4)));
+    for (let i = 0; i < steps; i++) {
+      const at = t + (dur * i) / steps;
+      const f = scale[i % scale.length] * (i >= scale.length ? 2 : 1);
+      const o = a.createOscillator(), g = a.createGain();
+      o.type = "sine"; o.frequency.value = f;
+      const v = 0.018 + (0.05 * i) / steps;
+      g.gain.setValueAtTime(0.0001, at); g.gain.exponentialRampToValueAtTime(v, at + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, at + 0.9);
+      o.connect(g).connect(a.destination); o.start(at); o.stop(at + 0.95);
+    }
+    const n = this.noise(dur + 0.2); if (!n) return;
+    const hp = a.createBiquadFilter(); hp.type = "highpass"; hp.frequency.setValueAtTime(3500, t); hp.frequency.exponentialRampToValueAtTime(9000, t + dur);
+    const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035, t + dur * 0.9); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.15);
+    n.connect(hp).connect(g).connect(a.destination); n.start(t); n.stop(t + dur + 0.2);
   },
   upgrade(step: number) {
     if (!this.enabled) return;
@@ -173,9 +181,9 @@ export const sound = {
       const t = t0 + i * 0.16, len = i === chords.length - 1 ? 1.8 : 0.3;
       for (const f of ch) {
         const o = a.createOscillator(), fl = a.createBiquadFilter(), g = a.createGain();
-        o.type = "sawtooth"; o.frequency.value = f;
-        fl.type = "lowpass"; fl.frequency.setValueAtTime(1200, t); fl.frequency.exponentialRampToValueAtTime(3800, t + 0.08);
-        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.045, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+        o.type = "triangle"; o.frequency.value = f;
+        fl.type = "lowpass"; fl.frequency.setValueAtTime(2200, t); fl.frequency.exponentialRampToValueAtTime(5200, t + 0.08);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.07, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
         o.connect(fl).connect(g).connect(a.destination); o.start(t); o.stop(t + len + 0.05);
       }
     });

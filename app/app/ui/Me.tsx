@@ -29,8 +29,8 @@ async function compress(file: File): Promise<string> {
 type Api = (path: string, body?: unknown) => Promise<{ ok: boolean; error?: string; [k: string]: unknown }>;
 
 export default function Me({
-  data, picture, section, onSectionDone, api, refresh, toast, go, openAnn, openHistory,
-}: { data: AppData; picture: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void; openHistory: () => void }) {
+  data, picture, lineName, section, onSectionDone, api, refresh, toast, go, openAnn, openHistory,
+}: { data: AppData; picture: string; lineName?: string; section?: string; onSectionDone: () => void; api: Api; refresh: () => void; toast: (t: string) => void; go: (t: TabKey, section?: string) => void; openAnn: (id: string) => void; openHistory: () => void }) {
   const { mine, board } = data;
   const feesRef = useRef<HTMLDivElement>(null);
   const zoneRef = useRef<HTMLDivElement>(null);
@@ -69,8 +69,9 @@ export default function Me({
       {/* ตัวตน */}
       <div className="me-hero">
         <div className="me-av">{picture ? <img src={picture} alt="" /> : initialOf(mine.me.nickname)}</div>
-        <h1>{mine.me.nickname}</h1>
-        <div className="soft small">{mine.me.fullName}</div>
+        <h1>{lineName || mine.me.nickname}</h1>
+        <div className="soft small">{lineName && lineName !== mine.me.nickname ? `${mine.me.nickname} · ` : ""}{mine.me.fullName}</div>
+        {picture && <div className="tiny muted" style={{ marginTop: 4 }}>รูปและชื่อซิงก์จากโปรไฟล์ LINE ของคุณ</div>}
         <div className="row" style={{ gap: 6, marginTop: 10, justifyContent: "center", flexWrap: "wrap" }}>
           <span className="chip">เลขที่ {mine.me.number}</span>
           <span className="chip">{mine.me.sid}</span>

@@ -16,6 +16,7 @@ export type Phase =
 const LIFF_ID = process.env.NEXT_PUBLIC_LIFF_ID || "2011755768-aSlCqo7l";
 const TOKEN_KEY = "bm33.token";
 const STATE_KEY = "bm33.state.v1";
+const PROFILE_KEY = "bm33.lineprofile.v1"; // รูป + ชื่อ LINE ล่าสุด (โชว์ทันทีตอนเปิดแอป)
 
 declare global {
   interface Window { liff?: Liff }
@@ -31,6 +32,7 @@ interface Liff {
   shareTargetPicker(msgs: unknown[]): Promise<unknown>;
   closeWindow(): void;
   openWindow(o: { url: string; external?: boolean }): void;
+  getProfile(): Promise<{ userId: string; displayName: string; pictureUrl?: string }>;
 }
 
 const ls = {
@@ -57,6 +59,13 @@ export function useApp() {
   const [data, setData] = useState<AppData | null>(null);
   const [liff, setLiff] = useState<Liff | null>(null);
   const [picture, setPicture] = useState<string>("");
+  const [lineName, setLineName] = useState<string>("");
+  // โปรไฟล์ LINE ของผู้ใช้ (รูป + ชื่อที่ตั้งใน LINE) — จำไว้ในเครื่อง แล้วอัปเดตทุกครั้งที่เปิดแอป
+  const setProfile = useCallback((p: { picture?: string; name?: string }) => {
+    if (p.picture) setPicture(p.picture);
+    if (p.name) setLineName(p.name);
+    if (p.picture || p.name) ls.set(PROFILE_KEY, JSON.stringify({ picture: p.picture ?? "", name: p.name ?? "" }));
+  }, []);
   const tokenRef = useRef<string>("");
   const idTokenRef = useRef<string>("");
   const versionRef = useRef<string>("");
@@ -106,6 +115,7 @@ export function useApp() {
         return;
       }
       // เปิดไว (แสดงข้อมูลล่าสุดที่เคยโหลด) ระหว่างรอ LINE ยืนยันตัวตน
+      try { const p = JSON.parse(ls.get(PROFILE_KEY) || "{}"); if (p.picture) setPicture(p.picture); if (p.name) setLineName(p.name); } catch { /* */ }
       const cachedToken = ls.get(TOKEN_KEY);
       const cachedState = ls.get(STATE_KEY);
       if (cachedToken && cachedState) {
@@ -146,14 +156,16 @@ export function useApp() {
         return;
       }
       const prof = r.profile as { picture?: string; name?: string } | undefined;
-      if (prof?.picture) setPicture(prof.picture);
+      if (prof) setProfile(prof);
+      // รูป/ชื่อล่าสุดจาก LINE โดยตรง (เปลี่ยนรูปใน LINE แล้วแอปเปลี่ยนตาม)
+      l.getProfile?.().then((p) => setProfile({ picture: p.pictureUrl, name: p.displayName })).catch(() => {});
       if (r.step === "ready" && r.token) accept(String(r.token));
       else if (r.step === "confirm") setPhase({ kind: "confirm", candidate: r.candidate as Candidate, claim: String(r.claim), picture: prof?.picture });
       else if (r.step === "register") setPhase({ kind: "register", picture: prof?.picture, name: prof?.name });
       else if (!cachedToken) setPhase({ kind: "error", message: String(r.error ?? "เข้าสู่ระบบไม่สำเร็จ") });
     })();
     return () => { cancelled = true; };
-  }, [api, refresh, accept]);
+  }, [api, refresh, accept, setProfile]);
 
   // ── อัปเดตสด: ทุก 15 วิ ตอนเปิดหน้าอยู่ + ทันทีเมื่อกลับเข้าแอป ───────────────
   useEffect(() => {
@@ -180,7 +192,7 @@ export function useApp() {
     return "";
   }, [api, accept]);
 
-  return { phase, setPhase, data, refresh, api, liff, picture, register, confirm, isPreview: !!data?.preview };
+  return { phase, setPhase, data, refresh, api, liff, picture, lineName, register, confirm, isPreview: !!data?.preview };
 }
 
 export function haptic(ms = 8) {

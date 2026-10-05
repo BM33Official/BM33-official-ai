@@ -190,7 +190,7 @@ export default function FortuneScreen({
           <small>แจ็กพอตวันนี้</small>
           {jackpots.length ? (
             <div className="hof-names">{jackpots.map((j, i) => <span key={i}><b>{j.name}</b> {time(j.at)}</span>)}</div>
-          ) : <b className="hof-empty">ยังไม่มีใครแตก — คนแรกอาจเป็นเธอ</b>}
+          ) : <b className="hof-empty">ยังไม่มีใครได้แจ็กพอต — คนแรกอาจเป็นเธอ</b>}
         </div>
       </div>
 
@@ -239,7 +239,7 @@ export default function FortuneScreen({
             <span className="tr-rate">{(rates[t.key] * 100).toFixed(rates[t.key] < 0.01 ? 2 : rates[t.key] < 0.1 ? 1 : 0)}%</span>
           </div>
         ))}
-        <div className="p-empty" style={{ paddingTop: 8 }}>เขย่าทุกวันติดกัน = โชคเพิ่ม · ชั่วโมงนำโชค = Platinum ขึ้นไป ×{LUCKY_MULT} · แตกแจ็กพอตแล้วชื่อขึ้นหอเกียรติยศ</div>
+        <div className="p-empty" style={{ paddingTop: 8 }}>เขย่าทุกวันติดกัน = โชคเพิ่ม · ชั่วโมงนำโชค = Platinum ขึ้นไป ×{LUCKY_MULT} · ได้แจ็กพอตแล้วชื่อขึ้นหอเกียรติยศ</div>
       </section>
 
       <div className="ft-stats">

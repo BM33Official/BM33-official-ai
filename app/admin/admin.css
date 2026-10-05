@@ -466,3 +466,8 @@ details.who-col:not([open]) .who-h { margin-bottom: 0; }
 .img-pick.has { flex-direction: row; justify-content: flex-start; gap: 14px; padding: 10px; border-style: solid; cursor: default; }
 .img-pick.has img { width: 96px; height: 96px; object-fit: cover; border-radius: 12px; }
 .linkish { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+.todo-track { margin-top: 12px; padding: 10px 12px; border-radius: 14px; background: var(--fill); display: flex; flex-direction: column; gap: 8px; }
+.switch.sm { width: 40px; height: 24px; } .switch.sm span { border-radius: 12px; } .switch.sm span::after { width: 20px; height: 20px; } .switch.sm input:checked + span::after { transform: translateX(16px); }
+.tt-bar { height: 8px; border-radius: 99px; background: rgba(0,0,0,.08); overflow: hidden; } .tt-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), #30d158); border-radius: 99px; transition: width .6s var(--ease); }
+.todo-track .chip { padding: 5px 11px; font-size: 13px; }
+.who-list { display: flex; flex-wrap: wrap; gap: 5px; } .who-list span { font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); }

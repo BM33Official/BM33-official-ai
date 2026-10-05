@@ -107,5 +107,17 @@ async function main() {
   ok("app shows Green Zone + history", meOff.zone.enabled === false && meOff.zone.title === "Green Zone" && Array.isArray(meOff.history));
   await setConfig("red_zone_enabled", prev, "test restore");
   ok("board has past list", Array.isArray((await publicBoard()).past));
+
+  // 8) ประกาศ "ทุกคนต้องกรอก" -> รายการใน สิ่งที่ต้องกรอก (เชื่อใจ) · ปิด = เอาออก
+  const { setAnnouncementTodo, readForms } = await import("../lib/bc/forms");
+  const { statusForForm } = await import("../lib/bc/status");
+  const t1 = await createAnnouncement({ title: "TEST ต้องกรอก", summary: "x", body: "x", status: "draft", source: "manual" }, { autoForm: false });
+  const fid = await setAnnouncementTodo({ id: t1, title: "TEST ต้องกรอก", summary: "x", deadline_at: "", links: [], form_id: "" }, true);
+  const tf = (await readForms(true)).find((f) => f.form_id === fid);
+  ok("must-fill creates trusted form", !!tf && tf.trust_claims === "1" && tf.announcement_id === t1);
+  ok("must-fill tracking lists members", (await statusForForm(tf!)).length >= 1);
+  await setAnnouncementTodo({ id: t1, title: "TEST ต้องกรอก", summary: "x", deadline_at: "", links: [], form_id: fid }, false);
+  ok("must-fill off removes form", !(await readForms(true)).some((f) => f.form_id === fid));
+  await updateAnnouncement(t1, { status: "deleted" });
 }
 main().catch((e) => { console.error(e); process.exit(1); });

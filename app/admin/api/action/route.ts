@@ -229,6 +229,22 @@ export async function POST(req: Request) {
           : ids.map((id) => ({ id, patch }));
         return j({ n: await bulkUpdateAnnouncements(changes) });
       }
+      case "announce.todo": {
+        // ทุกคนต้องกรอก (ติดตามว่าใครกดติ๊กแล้ว) — รองรับหลายประกาศพร้อมกัน
+        const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String) : [String(body.id ?? "")];
+        const on = body.on !== false;
+        const { setAnnouncementTodo } = await import("@/lib/bc/forms");
+        const { parseLinks } = await import("@/lib/bc/announcements");
+        let n = 0;
+        for (const id of ids.filter(Boolean)) {
+          const a = await getAnnouncement(id, true);
+          if (!a) continue;
+          const fid = await setAnnouncementTodo({ id: a.id, title: a.title, summary: a.summary, deadline_at: a.deadline_at, links: parseLinks(a.links), form_id: a.form_id }, on);
+          if (fid !== a.form_id) await bulkUpdateAnnouncements([{ id: a.id, patch: { form_id: fid } }]);
+          n++;
+        }
+        return j({ n });
+      }
       case "announce.bulkRemind": {
         // ส่ง LINE หลายเรื่องรวมเป็น "เตือนรวม" รายการเดียว -> ไปกดส่งที่ รออนุมัติ
         const ids = Array.isArray(body.ids) ? (body.ids as unknown[]).map(String).filter(Boolean) : [];

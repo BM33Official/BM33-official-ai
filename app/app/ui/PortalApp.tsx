@@ -9,6 +9,7 @@ import { AnnouncementDetail } from "./News";
 import Schedule from "./Schedule";
 import Me from "./Me";
 import History from "./History";
+import Tour, { HOME_TOUR } from "./Tour";
 import FortuneScreen from "./fortune/Fortune";
 import { DrawOverlay, Splash, ConfirmScreen, RegisterScreen, OutsideLine } from "./Overlays";
 
@@ -25,6 +26,9 @@ export default function PortalApp() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [histOpen, setHistOpen] = useState(false);
   const openHistory = useCallback(() => { haptic(); setHistOpen(true); }, []);
+  const [tour, setTour] = useState(false);
+  const openTour = useCallback(() => { setTab("home"); screens.current.home?.scrollTo({ top: 0 }); setTimeout(() => setTour(true), 250); }, []);
+  const closeTour = useCallback(() => { setTour(false); try { localStorage.setItem("bm33.tour.v1", "1"); } catch { /* */ } screens.current.home?.scrollTo({ top: 0, behavior: "smooth" }); }, []);
   const [energy, setEnergy] = useState(0);
   const [toast, setToastRaw] = useState({ t: "", n: 0 });
   const setToast = useCallback((t: string) => setToastRaw((x) => ({ t, n: x.n + 1 })), []);
@@ -86,6 +90,17 @@ export default function PortalApp() {
   }, [data, now]);
 
   // ประกาศที่ผ่านไปแล้วก็เปิดดูได้ (จากปุ่ม "ที่ผ่านมาแล้ว" หรือลิงก์เก่า)
+  // ครั้งแรกที่เปิดแอป: พาทัวร์อัตโนมัติ (ครั้งเดียว · ดูซ้ำได้ที่ปุ่ม "วิธีใช้")
+  const ready = phase.kind === "ready" && !!data;
+  useEffect(() => {
+    if (!ready || app.isPreview) return;
+    let seen = "1";
+    try { seen = localStorage.getItem("bm33.tour.v1") ?? ""; } catch { /* */ }
+    if (seen) return;
+    const t = setTimeout(openTour, 1400);
+    return () => clearTimeout(t);
+  }, [ready, app.isPreview, openTour]);
+
   const openAnn = data?.board.announcements.find((a) => a.id === openId) ?? data?.board.past?.find((a) => a.id === openId) ?? null;
 
   if (phase.kind === "boot" && !data) return <><FluidBackground /><div className="bm-grain" /><Splash /></>;
@@ -111,7 +126,7 @@ export default function PortalApp() {
 
       <main className="shell">
         <section ref={(el) => { screens.current.home = el; }} className={`screen ${tab === "home" ? "active" : ""}`} aria-hidden={tab !== "home"}>
-          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} focus={homeFocus} onFocused={() => setHomeFocus(undefined)} openHistory={openHistory} />
+          <Home data={data} active={tab === "home"} picture={app.picture} openAnn={setOpenId} go={go} claimForm={claimForm} focus={homeFocus} onFocused={() => setHomeFocus(undefined)} openHistory={openHistory} openTour={openTour} />
         </section>
         <section ref={(el) => { screens.current.schedule = el; }} className={`screen ${tab === "schedule" ? "active" : ""}`} aria-hidden={tab !== "schedule"}>
           <Schedule data={data} active={tab === "schedule"} />
@@ -123,7 +138,7 @@ export default function PortalApp() {
           />
         </section>
         <section ref={(el) => { screens.current.me = el; }} className={`screen ${tab === "me" ? "active" : ""}`} aria-hidden={tab !== "me"}>
-          <Me data={data} picture={app.picture} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} go={go} openAnn={setOpenId} openHistory={openHistory} />
+          <Me data={data} picture={app.picture} lineName={app.lineName} section={meSection} onSectionDone={() => setMeSection(undefined)} api={app.api} refresh={app.refresh} toast={setToast} go={go} openAnn={setOpenId} openHistory={openHistory} />
         </section>
       </main>
 
@@ -136,6 +151,8 @@ export default function PortalApp() {
       <Sheet open={histOpen} onClose={() => setHistOpen(false)}>
         {histOpen && <History data={data} />}
       </Sheet>
+
+      {tour && <Tour steps={HOME_TOUR} onClose={closeTour} />}
 
       <DrawOverlay data={data} now={now} />
       <Toast text={toast.t} n={toast.n} />

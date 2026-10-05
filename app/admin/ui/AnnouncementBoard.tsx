@@ -1,20 +1,23 @@
 "use client";
 // รายการประกาศ — เลือกหลายอัน แล้วจัดเป็น "ชุด" (แอปโชว์เป็นก้อนเดียว) · เรียงลำดับในชุด · ซ่อน/ปักหมุด/หมวด/ส่ง LINE รวม
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckSquare, Square, Layers, X, Pin, EyeOff, Eye, Bell, Ungroup, Pencil, Check, Search } from "lucide-react";
+import { CheckSquare, Square, Layers, X, Pin, EyeOff, Eye, Bell, Ungroup, Pencil, Check, Search, ClipboardCheck } from "lucide-react";
 import { act } from "./api";
 import AnnouncementRow from "./AnnouncementRow";
 import type { AnnDraft } from "./AnnouncementEditor";
 
 type Meta = { created: string; deadline: string; rel: string; source: string; reminders: string; event?: string; overdue?: boolean };
-export type BoardItem = { a: AnnDraft & { id: string; group: string; order: number; created_at: string }; meta: Meta };
+export type Track = { formId: string; total: number; done: string[]; pending: string[]; unreg: string[] };
+export type BoardItem = { a: AnnDraft & { id: string; group: string; order: number; created_at: string }; meta: Meta; track: Track | null };
 const CATS = ["ทั่วไป", "การเงิน", "วิชาการ", "กิจกรรม", "ฟอร์ม/เอกสาร", "ด่วน"];
 type Show = "live" | "draft" | "hidden" | "all";
 
 export default function AnnouncementBoard({ items: initial, forms, committee }: { items: BoardItem[]; forms: { id: string; name: string }[]; committee: { nickname: string; role: string }[] }) {
   const router = useRouter();
   const [items, setItems] = useState(initial);
+  // ข้อมูลใหม่จาก server (หลัง router.refresh) — เช่น ตัวเลขคนที่กดกรอกแล้ว
+  useEffect(() => { setItems(initial); }, [initial]);
   const [show, setShow] = useState<Show>("live");
   const [q, setQ] = useState("");
   const [picking, setPicking] = useState(false);
@@ -110,7 +113,8 @@ export default function AnnouncementBoard({ items: initial, forms, committee }: 
     <AnnouncementRow key={`${x.a.id}:${x.a.status}`} a={x.a} meta={x.meta} forms={forms} committee={committee}
       select={picking ? { on: sel.has(x.a.id), toggle: () => toggle(x.a.id) } : undefined}
       move={!picking ? move_ : undefined}
-      onStatus={(status) => patchLocal([x.a.id], { status })} />
+      onStatus={(status) => patchLocal([x.a.id], { status })}
+      track={x.track} />
   );
 
   return (
@@ -189,6 +193,7 @@ export default function AnnouncementBoard({ items: initial, forms, committee }: 
                 <option value="">หมวด…</option>
                 {CATS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+              <button className="btn btn-sm" disabled={busy} onClick={async () => { setBusy(true); const r = await act("announce.todo", { ids, on: true }); setBusy(false); setMsg(r.ok ? { t: `ตั้ง “ทุกคนต้องกรอก” ${r.n} เรื่องแล้ว — ขึ้นใน สิ่งที่ต้องกรอก ของแอป และดูได้ว่าใครกดแล้ว`, ok: true } : { t: `ไม่สำเร็จ: ${r.error}`, ok: false }); if (r.ok) { setSel(new Set()); router.refresh(); } }}><ClipboardCheck size={15} /> ทุกคนต้องกรอก</button>
               <button className="btn btn-sm btn-green" disabled={busy} onClick={remind}><Bell size={15} /> ส่ง LINE รวม</button>
             </>
           )}
