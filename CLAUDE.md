@@ -27,6 +27,7 @@ Claude Code อ่านไฟล์นี้ทุกครั้งที่�
 - ❌ ห้ามลบแถวใน BC_* (เลขแถวเลื่อน) — ใช้ status `deleted/hidden` (ยกเว้น BC_exams ที่ลบด้วยการอ่านสด)
 - ❌ คอลัมน์ใหม่ต่อท้ายเสมอ + เพิ่ม `SCHEMA_VERSION` ใน `lib/bc/sheets.ts`
 - ❌ อย่าใช้ markdown ในข้อความ LINE · buttons label ≤ 20 · ≤ 5 messages/reply
+- ❌ ห้ามเรียก `lineClient.pushMessage/multicast` ตรง ๆ — ใช้ `pushTo` / `pushMany` / `multicastSafe` ใน `lib/line.ts` (ทำความสะอาด + validate กับ LINE + แปลงแบบง่ายอัตโนมัติ + ส่งทีละคนไม่ล้มทั้งชุด) · error ให้ใช้ `lineErrorText(err)` (มีเหตุผลจาก LINE)
 - ❌ อย่า return 4xx/5xx จาก webhook หลังผ่าน signature (401 เฉพาะ signature ผิด)
 - ❌ อย่า commit `.env*` หรือ `*.secret.local`
 - AI ต้องตอบเป็น JSON schema เสมอ (`lib/ai/answer.ts`) — ห้ามกลับไปใช้ข้อความอิสระ + ROUTE: แบบเดิม
