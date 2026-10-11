@@ -96,23 +96,25 @@ function whenText(iso: string, now: number): string {
   return d <= 0 ? `วันนี้! ${t.split(" ").slice(-2).join(" ")}` : d === 1 ? `พรุ่งนี้ · ${t}` : `อีก ${d} วัน · ${t}`;
 }
 
-// ข้อความของคนหนึ่งคน = LINE message "เดียว": การ์ดสรุป + การ์ดทีละเรื่อง (ปุ่มลิงก์) เลื่อนได้
+// ข้อความของคนหนึ่งคน (ส่งครั้งเดียว · นับโควตา 1):
+//   ① การ์ดสรุปรายการ (ใหญ่)  ② การ์ดเลื่อนทีละเรื่อง (ขนาดเท่ากันทุกใบ ไม่ถูกยืดตามการ์ดสรุป) + ปุ่มลิงก์
 export function digestMessages(nick: string, list: DigestItem[], now = Date.now()): Msg[] {
   const shown = list.slice(0, 10);
+  const lines: messagingApi.FlexComponent[] = [];
+  shown.forEach((it, i) => {
+    lines.push({ type: "text", text: `${KIND[it.kind].em} ${it.title}`.slice(0, 90), size: "sm", weight: "bold", wrap: true, color: "#0F172A", ...(i ? { margin: "md" } : {}) } as messagingApi.FlexText);
+    if (it.at) lines.push({ type: "text", text: whenText(it.at, now), size: "xs", wrap: true, color: KIND[it.kind].color, weight: "bold" });
+  });
   const summary: messagingApi.FlexBubble = {
     type: "bubble", size: "kilo",
     header: { type: "box", layout: "vertical", backgroundColor: "#1D4ED8", paddingAll: "14px", contents: [
       { type: "text", text: `${nick || "เพื่อน"} จ๋า ⏰`, color: "#DBEAFE", size: "xs", weight: "bold" },
       { type: "text", text: `สิ่งที่ต้องทำ ${list.length} เรื่อง`, color: "#FFFFFF", size: "lg", weight: "bold", margin: "xs" },
     ] },
-    body: { type: "box", layout: "vertical", spacing: "md", paddingAll: "14px", contents: [
-      ...shown.map((it): messagingApi.FlexBox => ({
-        type: "box", layout: "vertical", spacing: "xs", contents: [
-          { type: "text", text: `${KIND[it.kind].em} ${it.title}`.slice(0, 90), size: "sm", weight: "bold", wrap: true, maxLines: 2, color: "#0F172A" },
-          ...(it.at ? [{ type: "text", text: whenText(it.at, now), size: "xxs", color: KIND[it.kind].color, weight: "bold" } as messagingApi.FlexText] : []),
-        ],
-      })),
-      { type: "text", text: "เลื่อนดูลิงก์ทีละเรื่อง → ทำแล้วติ๊กในแอป จะไม่ถูกเตือนเรื่องนั้นอีก 🙏", size: "xxs", color: "#64748B", wrap: true, margin: "lg" },
+    body: { type: "box", layout: "vertical", spacing: "xs", paddingAll: "14px", contents: [
+      ...lines,
+      { type: "separator", margin: "lg" },
+      { type: "text", text: "เลื่อนการ์ดถัดไปเพื่อเปิดลิงก์ทีละเรื่อง · ทำแล้วติ๊กในแอป จะไม่ถูกเตือนเรื่องนั้นอีก 🙏", size: "xxs", color: "#64748B", wrap: true, margin: "md" },
     ] },
     footer: { type: "box", layout: "vertical", paddingAll: "12px", contents: [
       { type: "button", style: "primary", height: "sm", color: "#1D4ED8", action: { type: "uri", label: "เปิดแอป BM33", uri: `${APP}?tab=home` } },
@@ -123,14 +125,18 @@ export function digestMessages(nick: string, list: DigestItem[], now = Date.now(
     header: { type: "box", layout: "vertical", backgroundColor: KIND[it.kind].color, paddingAll: "10px", contents: [{ type: "text", text: `${KIND[it.kind].em} ${KIND[it.kind].th}`, color: "#FFFFFF", size: "xs", weight: "bold" }] },
     body: { type: "box", layout: "vertical", spacing: "sm", paddingAll: "12px", contents: [
       { type: "text", text: it.title.slice(0, 80), weight: "bold", size: "sm", wrap: true, maxLines: 3 },
-      { type: "text", text: it.at ? relativeTh(it.at, now) : "ประกาศใหม่", size: "xs", color: KIND[it.kind].color, weight: "bold" },
+      { type: "text", text: it.at ? relativeTh(it.at, now) : "ประกาศใหม่", size: "xs", wrap: true, color: KIND[it.kind].color, weight: "bold" },
     ] },
     footer: { type: "box", layout: "vertical", spacing: "xs", paddingAll: "10px", contents: (it.links.length ? it.links : [{ label: "เปิดแอป", url: `${APP}?tab=home` }]).slice(0, 2).map((l, i): messagingApi.FlexButton => ({
-      type: "button", height: "sm", style: i === 0 ? "primary" : "secondary", color: i === 0 ? KIND[it.kind].color : undefined,
+      type: "button", height: "sm", style: i === 0 ? "primary" : "secondary", ...(i === 0 ? { color: KIND[it.kind].color } : {}),
       action: { type: "uri", label: (l.label || "เปิด").slice(0, 20), uri: l.url },
     })) },
   }));
-  return [{ type: "flex", altText: `${nick || "เพื่อน"} จ๋า มี ${list.length} เรื่องที่ต้องทำ: ${list.map((i) => i.title).join(" · ")}`.slice(0, 390), contents: { type: "carousel", contents: [summary, ...bubbles] } }];
+  const alt = `${nick || "เพื่อน"} จ๋า มี ${list.length} เรื่องที่ต้องทำ: ${list.map((i) => i.title).join(" · ")}`;
+  return [
+    { type: "flex", altText: alt.slice(0, 390), contents: summary },
+    { type: "flex", altText: `ลิงก์ทีละเรื่อง (${shown.length})`, contents: { type: "carousel", contents: bubbles } },
+  ];
 }
 
 export interface Compiled {
@@ -216,6 +222,22 @@ export async function addToBatch(add: string[], opts: { notify?: boolean; now?: 
   for (const o of legacy) if (o.__row) await patchRecord("outbox", o.__row, o as never, { status: "merged", decided_at: nowISO(), result: `รวมเข้าเตือนรวม #${item.code}` });
   if (opts.notify) await notifyBatch(item, c, now).catch((err) => log.warn("batch_notify_failed", { message: String(err).slice(0, 200) }));
   return { item, keys, people };
+}
+
+// เอาเรื่องออกจาก "เตือนรวม" (ปุ่มถังขยะในรออนุมัติ) — ไม่ลบประกาศ/ฟอร์มจริง แค่ไม่เตือนรอบนี้
+export async function removeFromBatch(remove: string[], now = Date.now()): Promise<{ item: OutboxItem; keys: string[]; people: number } | null> {
+  const open = await openBatch();
+  if (!open?.item.__row) return null;
+  const drop = new Set(await normalizeKeys(remove));
+  const keys = (await normalizeKeys(open.keys)).filter((k) => !drop.has(k));
+  const c = await compileBatch(keys, now);
+  const people = Object.keys(c.per).length;
+  const patch = {
+    messages: packMessages({ keys }), title: `เตือนรวม · ${c.items.length} เรื่อง · ${people} คน`,
+    preview: `ส่งเป็นข้อความเดียวต่อคน — แต่ละคนเห็นเฉพาะเรื่องที่ยังไม่ได้ทำ\n\n${batchPreview(c.items, c.counts, now)}`.slice(0, 4000),
+  };
+  await patchRecord("outbox", open.item.__row, open.item as never, patch);
+  return { item: { ...open.item, ...patch }, keys, people };
 }
 
 // ทุก ~15 นาที (broadcast cron): รวมรายการเก่าที่ค้าง · ตั้งแต่ 08:00 เสนอเรื่องที่ใกล้ถึง + LINE หาแอดมิน "วันละครั้ง"

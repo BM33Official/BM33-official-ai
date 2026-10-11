@@ -52,23 +52,23 @@ export default function AnnouncementRow({ a, meta, forms, committee, select, mov
           </label>
         )}
         <div style={{ padding: 18, flex: 1, minWidth: 0 }}>
-          <div className="row between" style={{ alignItems: "flex-start" }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="row" style={{ gap: 6 }}>
+          <div className="ann-top">
+            <div className="ann-content">
+              <div className="row ann-meta" style={{ gap: 6 }}>
                 <span className="badge" style={{ background: color + "1f", color }}>{a.category}</span>
                 {st !== "live" && <span className="badge b-muted">{st === "draft" ? "ร่าง" : "ซ่อนอยู่"}</span>}
                 {a.pinned && <span className="badge b-orange"><Pin size={11} /> ปักหมุด</span>}
                 <span className="hint row" style={{ gap: 5 }}><S.icon size={13} /> {S.th} · {meta.created}{a.author ? ` · ${a.author}` : ""}</span>
               </div>
-              <div style={{ fontWeight: 800, fontSize: 17, marginTop: 8 }}>{a.title}</div>
-              <div className="hint" style={{ fontSize: 14, marginTop: 2 }}>{a.summary}</div>
+              <div className="ann-title">{a.title}</div>
+              <div className="hint ann-summary">{a.summary}</div>
               <div className="row" style={{ marginTop: 10, gap: 6 }}>
                 {meta.deadline && <span className={`badge ${meta.overdue ? "b-muted" : "b-orange"}`}><Clock size={12} /> {meta.deadline} · {meta.rel}</span>}
                 {meta.event && <span className="badge b-purple"><CalendarDays size={12} /> {meta.event}</span>}
                 {meta.reminders && <span className="badge b-green"><Bell size={12} /> เตือนแล้ว {meta.reminders}</span>}
               </div>
             </div>
-            <div className="row" style={{ gap: 6 }}>
+            <div className="ann-actions">
               {move && (
                 <span className="row" style={{ gap: 2 }}>
                   <button className="btn btn-sm btn-ghost" disabled={!move.up} onClick={move.up} aria-label="เลื่อนขึ้น"><ArrowUp size={14} /></button>

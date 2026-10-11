@@ -493,13 +493,21 @@ function appInviteFlex(label = "เปิดแอป BM33"): messagingApi.FlexM
 
 // reply ก่อน (ฟรี) — ถ้า reply token หมดอายุ (AI ใช้เวลานาน) ค่อย push แทน
 async function safeReply(replyToken: string, to: string | undefined, messages: Msg[]): Promise<void> {
+  const { sanitizeMessages, ensureSendable, pushTo, lineErrorText } = await import("@/lib/line");
+  let msgs = sanitizeMessages(messages);
   try {
-    await lineClient.replyMessage({ replyToken, messages: messages.slice(0, 5) });
+    await lineClient.replyMessage({ replyToken, messages: msgs });
+    return;
   } catch (err) {
-    log.warn("reply_failed", { message: String(err).slice(0, 200) });
+    log.warn("reply_failed", { message: lineErrorText(err).slice(0, 200) });
+    // ข้อความผิดรูปแบบ (400) -> แปลงแบบที่ LINE รับแน่ ๆ แล้วลอง reply อีกครั้ง (token ยังใช้ได้)
+    if ((err as { status?: number }).status === 400) {
+      msgs = (await ensureSendable(msgs)).messages;
+      try { await lineClient.replyMessage({ replyToken, messages: msgs }); return; } catch { /* ตกไป push */ }
+    }
     if (!to) return;
     try {
-      await lineClient.pushMessage({ to, messages: messages.slice(0, 5) });
+      await pushTo(to, msgs);
       log.info("push_fallback_ok", { to: mask(to) });
     } catch (e2) {
       log.error("push_fallback_failed", { message: String(e2).slice(0, 200) });

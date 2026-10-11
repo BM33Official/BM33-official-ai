@@ -276,7 +276,7 @@ export async function POST(req: Request) {
         const keys = Array.isArray(body.keys) ? (body.keys as unknown[]).map(String) : undefined;
         if (keys && !keys.length) return NextResponse.json({ ok: false, error: "ยังไม่ได้เลือกเรื่อง" });
         const r = await approveAndSend(String(body.id ?? ""), `web:${by}`, { keys });
-        return NextResponse.json({ ok: r.ok, count: r.count, error: r.error });
+        return NextResponse.json({ ok: r.ok, count: r.count, error: r.error, failed: r.failed ?? 0, note: r.note ?? "" });
       }
       case "outbox.digestNow": {
         // รวบรวมเรื่องที่ใกล้ถึงเข้า "เตือนรวม" ตอนนี้ (ไม่ส่ง LINE หาแอดมิน — อยู่ในหน้านี้แล้ว)
@@ -284,6 +284,12 @@ export async function POST(req: Request) {
         const sug = (await reminderCandidates()).filter((c) => c.suggested && (c.forAll || (c.undone?.size ?? 0) > 0)).map((c) => c.key);
         const r = await addToBatch(sug, { notify: false });
         return j({ code: r?.item.code ?? "", items: r?.keys.length ?? 0, people: r?.people ?? 0 });
+      }
+      case "outbox.batchRemove": {
+        const { removeFromBatch } = await import("@/lib/bc/digest");
+        const keys = Array.isArray(body.keys) ? (body.keys as unknown[]).map(String) : [String(body.key ?? "")];
+        const r = await removeFromBatch(keys);
+        return j({ items: r?.keys.length ?? 0, people: r?.people ?? 0 });
       }
       case "outbox.batchAdd": {
         const { addToBatch } = await import("@/lib/bc/digest");

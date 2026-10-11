@@ -7,7 +7,7 @@ import { OutboxItem, Member } from "@/lib/bc/types";
 import { verifiedMembers } from "@/lib/bc/members";
 import { segmentRecipients } from "@/lib/bc/status";
 import { approverIds } from "@/lib/bc/config";
-import { multicastTo, pushTo, messageQuota } from "@/lib/line";
+import { pushTo, messageQuota, pushMany, multicastSafe, BulkResult } from "@/lib/line";
 import { log } from "@/lib/logger";
 
 type Msg = messagingApi.Message;
@@ -149,7 +149,7 @@ export async function notifyApprovers(item: OutboxItem): Promise<void> {
   for (const id of ids) await pushTo(id, [approvalFlex(item, count)]);
 }
 
-export interface SendOutcome { ok: boolean; count: number; error?: string; item?: OutboxItem }
+export interface SendOutcome { ok: boolean; count: number; error?: string; item?: OutboxItem; failed?: number; note?: string }
 
 // อนุมัติ + ส่งจริง · เตือนรวม: keys = เรื่องที่เลือกส่ง (ไม่ใส่ = ทุกเรื่องในรายการ) · picks = เลขข้อ (1-based) จาก LINE
 export async function approveAndSend(idOrCode: string, by: string, opts: { keys?: string[]; picks?: number[] } = {}): Promise<SendOutcome> {
@@ -194,22 +194,29 @@ export async function approveAndSend(idOrCode: string, by: string, opts: { keys?
     return { ok: false, count: 0, error: `โควตาไม่พอ (ต้องใช้ ${recipients.length} เหลือ ${q.remaining})`, item };
   }
   await patchRecord("outbox", item.__row, item as never, { status: "approved", decided_at: nowISO(), result: `by ${by}` });
+  // ส่งแบบไม่ล้มทั้งชุด: เช็กข้อความกับ LINE ก่อน (ไม่ผ่าน = แปลงแบบง่ายอัตโนมัติ) · ใครส่งไม่ได้ข้ามไปแล้วบันทึกเหตุผล
+  let r: BulkResult;
   try {
     if (per) {
-      // ส่งทีละ 8 คนพร้อมกัน (100 คน ≈ 3-4 วิ แทน ~20 วิ)
-      const jobs = members.map((m) => ({ to: m.line_user_id, msgs: per![digits(m.matched_student_id)] })).filter((j) => j.to && j.msgs?.length);
-      for (let i = 0; i < jobs.length; i += 8) await Promise.all(jobs.slice(i, i + 8).map((j) => pushTo(j.to, j.msgs.slice(0, 5))));
+      const jobs = members.map((m) => ({ to: m.line_user_id, messages: (per![digits(m.matched_student_id)] ?? []).slice(0, 5) })).filter((j) => j.to && j.messages.length);
+      r = await pushMany(jobs);
     } else {
-      await multicastTo(recipients, messages);
+      r = await multicastSafe(recipients, messages);
     }
   } catch (err) {
-    const fresh = (await readOutbox(true)).find((o) => o.id === item.id);
-    if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "failed", result: String(err).slice(0, 300) });
-    return { ok: false, count: 0, error: String(err), item };
+    r = { sent: 0, failed: [{ to: "*", error: String((err as Error)?.message ?? err) }], notes: [] };
   }
   const fresh = (await readOutbox(true)).find((o) => o.id === item.id);
-  if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "sent", sent_at: nowISO(), result: `sent ${recipients.length} · by ${by}${sentNote}` });
-  return { ok: true, count: recipients.length, item };
+  const why = r.failed.length ? ` · ส่งไม่ได้ ${r.failed.length} คน: ${Array.from(new Set(r.failed.map((f) => f.error))).slice(0, 2).join(" / ")}` : "";
+  const notes = r.notes.length ? ` · ${r.notes.join(" / ")}` : "";
+  if (r.sent === 0) {
+    // ไม่ถึงใครเลย -> กลับไปรออนุมัติ (กดส่งใหม่ได้ ไม่ต้องสร้างใหม่) + เก็บเหตุผลจาก LINE
+    if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "pending", decided_at: "", result: `ส่งไม่สำเร็จ${why}${notes}`.slice(0, 480) });
+    log.warn("outbox_send_failed", { id: item.id, error: why.slice(0, 300) });
+    return { ok: false, count: 0, error: `ยังไม่ได้ส่งถึงใคร${why || ""}`.slice(0, 400), item };
+  }
+  if (fresh?.__row) await patchRecord("outbox", fresh.__row, fresh as never, { status: "sent", sent_at: nowISO(), result: `sent ${r.sent}/${r.sent + r.failed.length} · by ${by}${sentNote}${why}${notes}`.slice(0, 480) });
+  return { ok: true, count: r.sent, item, failed: r.failed.length, note: (why + notes).replace(/^ · /, "") };
 }
 
 export async function rejectOutbox(idOrCode: string, by: string): Promise<boolean> {

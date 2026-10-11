@@ -1,7 +1,7 @@
 "use client";
 // "เตือนรวม" — ติ๊กเรื่องที่จะเตือน → เพื่อนแต่ละคนได้ข้อความเดียว (เฉพาะเรื่องที่ตัวเองยังไม่ทำ) + การ์ดลิงก์
 import { useMemo, useState } from "react";
-import { Send, X, Users, MessageCircle, Plus, Layers, CalendarClock, Check } from "lucide-react";
+import { Send, X, Users, MessageCircle, Plus, Layers, CalendarClock, Check, Trash2, Undo2 } from "lucide-react";
 import { act } from "./api";
 import { isoToLocalInput, localInputToIso } from "./dt";
 import { relativeTh, thDateTime } from "@/lib/time";
@@ -22,6 +22,7 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
   const [on, setOn] = useState<Set<string>>(() => new Set(initial.map((e) => e.key)));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [err, setErr] = useState(false);
   const [gone, setGone] = useState(false);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -56,14 +57,36 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
     setAdding(false);
     act("outbox.batchAdd", { key: e.key }); // จำไว้ในรายการด้วย (เผื่อกดส่งจาก LINE ทีหลัง)
   }
+  // ถังขยะ: เอาออกจากเตือนรวม (ไม่ลบประกาศจริง) — ย้ายไปอยู่ "เพิ่มเรื่องอื่น" กดเอากลับได้
+  const [removed, setRemoved] = useState<BatchEntry[]>([]);
+  async function remove(list: BatchEntry[]) {
+    if (!list.length) return;
+    const keys = new Set(list.map((e) => e.key));
+    setEntries((l) => l.filter((x) => !keys.has(x.key)));
+    setOn((s) => { const n = new Set(s); keys.forEach((k) => n.delete(k)); return n; });
+    setExtra((l) => [...list, ...l.filter((x) => !keys.has(x.key))]);
+    setRemoved(list);
+    if (id !== "demo") {
+      const r = await act("outbox.batchRemove", { id, keys: Array.from(keys) });
+      setMsg(r.ok ? `เอาออก ${list.length} เรื่องแล้ว` : `เอาออกไม่ได้: ${r.error}`);
+    }
+  }
+  function undoRemove() {
+    removed.forEach((e) => add(e));
+    setRemoved([]);
+    setMsg("");
+  }
+  const unticked = entries.filter((e) => !on.has(e.key));
+
   async function send() {
     if (!picked.length) return;
     if (!confirm(`ส่งเตือนรวม ${picked.length} เรื่อง ถึง ${people} คน (คนละ 1 ข้อความ) ตอนนี้เลย?`)) return;
     setBusy(true); setMsg("");
     const r = await act("outbox.approve", { id, keys: picked.map((e) => e.key) });
     setBusy(false);
-    setMsg(r.ok ? `ส่งแล้ว ${r.count} คน ✓` : `ส่งไม่ได้: ${r.error}`);
-    if (r.ok) setTimeout(() => setGone(true), 1200);
+    setErr(!r.ok);
+    setMsg(r.ok ? `ส่งแล้ว ${r.count} คน ✓${r.failed ? ` · ส่งไม่ถึง ${r.failed} คน (${r.note})` : ""}` : `ยังไม่ได้ส่ง — ${r.error} · รายการยังอยู่ กดส่งใหม่ได้`);
+    if (r.ok && !r.failed) setTimeout(() => setGone(true), 2500);
   }
   async function reject() {
     if (!confirm("ไม่ส่งรอบนี้? (พรุ่งนี้เช้าระบบจะเสนอเรื่องที่ยังค้างให้อีกครั้ง)")) return;
@@ -95,12 +118,21 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
                     <CalendarClock size={15} /> แก้วัน
                   </button>
                 )}
+                <button type="button" className="batch-trash" title="เอาเรื่องนี้ออกจากเตือนรวม" aria-label="เอาออก" onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); remove([e]); }}>
+                  <Trash2 size={16} />
+                </button>
               </label>
               {editing === e.key && <DateEditor entry={e} onDone={onDates} />}
             </div>
           ))}
           {entries.length === 0 && <div className="hint">ยังไม่มีเรื่องในรายการ — เพิ่มจากด้านล่าง</div>}
         </div>
+        {(unticked.length > 0 || removed.length > 0) && (
+          <div className="row" style={{ gap: 8 }}>
+            {unticked.length > 0 && <button className="btn btn-sm btn-danger" onClick={() => remove(unticked)}><Trash2 size={14} /> ลบเรื่องที่ไม่ได้ติ๊ก ({unticked.length})</button>}
+            {removed.length > 0 && <button className="btn btn-sm btn-ghost" onClick={undoRemove}><Undo2 size={14} /> เอากลับ ({removed.length})</button>}
+          </div>
+        )}
 
         {extra.length > 0 && (adding ? (
           <div className="batch-list add">
@@ -120,26 +152,31 @@ export default function BatchCard({ id, code, entries: initial, extra: initialEx
           <button className="btn btn-green btn-lg" onClick={send} disabled={busy || !picked.length || !people}><Send size={18} /> ส่งรวม {people} คน</button>
           <button className="btn btn-danger" onClick={reject} disabled={busy}><X size={16} /> ไม่ส่งรอบนี้</button>
         </div>
-        {msg && <div className="msg msg-ok">{msg}</div>}
+        {msg && <div className={`msg ${err ? "msg-err" : "msg-ok"}`}>{msg}</div>}
       </div>
 
       <div className="phone line">
         <div className="hint" style={{ color: "#fff", fontWeight: 700 }}>{sample ? `ตัวอย่างที่ ${nick[sample[0]] || "เพื่อน"} จะได้รับ (${sample[1].length} เรื่อง)` : "ยังไม่มีใครต้องได้รับ"}</div>
         {sample && (
-          <div className="lc-car">
-            <div className="lc-card sum">
+          <>
+            {/* ① การ์ดสรุป (ข้อความแรก) */}
+            <div className="lc-card sum solo">
               <div className="lc-h" style={{ background: "#1D4ED8" }}><small>{nick[sample[0]] || "เพื่อน"} จ๋า ⏰</small><b>สิ่งที่ต้องทำ {sample[1].length} เรื่อง</b></div>
               <div className="lc-body">{sample[1].map((e) => <div key={e.key}><b>{KIND[e.kind].em} {e.title}</b>{e.when && <small style={{ color: KIND[e.kind].color }}>{e.when}</small>}</div>)}</div>
               <span className="lc-btn" style={{ background: "#1D4ED8" }}>เปิดแอป BM33</span>
             </div>
-            {sample[1].map((e) => (
-              <div key={e.key} className="lc-card">
-                <div className="lc-h" style={{ background: KIND[e.kind].color }}><small>{KIND[e.kind].em} {KIND[e.kind].th}</small></div>
-                <div className="lc-body"><b>{e.title}</b>{e.when && <small style={{ color: KIND[e.kind].color }}>{e.when}</small>}</div>
-                {(e.links.length ? e.links : ["เปิดแอป"]).slice(0, 2).map((l, i) => <span key={i} className={`lc-btn ${i ? "sec" : ""}`} style={i ? undefined : { background: KIND[e.kind].color }}>{l}</span>)}
-              </div>
-            ))}
-          </div>
+            {/* ② การ์ดเลื่อนทีละเรื่อง — ขนาดเท่ากัน ไม่ยืดตามการ์ดสรุป */}
+            <div className="lc-car items">
+              {sample[1].map((e) => (
+                <div key={e.key} className="lc-card">
+                  <div className="lc-h" style={{ background: KIND[e.kind].color }}><small>{KIND[e.kind].em} {KIND[e.kind].th}</small></div>
+                  <div className="lc-body"><b className="clamp3">{e.title}</b>{e.when && <small style={{ color: KIND[e.kind].color }}>{e.when.split(" · ")[0]}</small>}</div>
+                  {(e.links.length ? e.links : ["เปิดแอป"]).slice(0, 2).map((l, i) => <span key={i} className={`lc-btn ${i ? "sec" : ""}`} style={i ? undefined : { background: KIND[e.kind].color }}>{l}</span>)}
+                </div>
+              ))}
+            </div>
+            <div className="hint" style={{ color: "#fff", margin: 0, opacity: .85 }}>ส่งครั้งเดียว (นับโควตา 1 ต่อคน) · การ์ดสรุป + การ์ดลิงก์เลื่อนได้</div>
+          </>
         )}
       </div>
     </div>

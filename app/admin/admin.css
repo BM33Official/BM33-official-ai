@@ -471,3 +471,28 @@ details.who-col:not([open]) .who-h { margin-bottom: 0; }
 .tt-bar { height: 8px; border-radius: 99px; background: rgba(0,0,0,.08); overflow: hidden; } .tt-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), #30d158); border-radius: 99px; transition: width .6s var(--ease); }
 .todo-track .chip { padding: 5px 11px; font-size: 13px; }
 .who-list { display: flex; flex-wrap: wrap; gap: 5px; } .who-list span { font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); }
+
+/* เตือนรวม: ถังขยะ + ตัวอย่างไม่ยืด */
+.batch-trash { flex: none; width: 34px; height: 34px; border-radius: 10px; border: 0; background: transparent; color: var(--muted); display: grid; place-items: center; cursor: pointer; transition: background .15s, color .15s; }
+.batch-trash:hover { background: rgba(255,59,48,.12); color: #ff3b30; }
+.lc-card.solo { width: 100%; max-width: 300px; }
+.lc-car.items { align-items: stretch; }
+.lc-car.items .lc-card { width: 150px; }
+.lc-car.items .lc-body { flex: 1; }
+.clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* การ์ดประกาศ: ข้อความใช้ความกว้างเต็ม · มือถือ ปุ่มลงไปอยู่ใต้ข้อความ (ไม่บีบข้อความเป็นคอลัมน์แคบ) */
+.ann-top { display: flex; gap: 14px; align-items: flex-start; }
+.ann-content { flex: 1; min-width: 0; }
+.ann-meta { flex-wrap: wrap; }
+.ann-meta .hint { white-space: normal; }
+.ann-title { font-weight: 800; font-size: 17px; margin-top: 8px; line-height: 1.4; overflow-wrap: anywhere; }
+.ann-summary { font-size: 14px; margin-top: 2px; line-height: 1.55; overflow-wrap: anywhere; }
+.ann-actions { display: flex; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 760px) {
+  .ann-top { flex-direction: column; gap: 12px; }
+  .ann-actions { width: 100%; justify-content: flex-start; }
+  .ann-actions .btn { flex: 1 1 auto; justify-content: center; }
+  .ann-row .todo-track label.row { flex-wrap: wrap !important; }
+}
+.batch-trash { margin-left: auto; }
